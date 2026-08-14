@@ -1,0 +1,253 @@
+.home-page {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    min-height: 100dvh;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--foreground);
+    background:
+        radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--theme-color) 10%, transparent), transparent 38%),
+        var(--background);
+}
+
+.home-grid {
+    position: absolute;
+    z-index: -2;
+    inset: 0;
+    opacity: 0.55;
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--foreground) 5%, transparent) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: linear-gradient(to bottom, black, transparent 86%);
+}
+
+.home-nav {
+    display: flex;
+    width: min(1120px, calc(100% - 48px));
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 auto;
+    padding: 24px 0;
+}
+
+.home-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    color: var(--foreground);
+    font-size: 15px;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+}
+
+.home-brand-mark {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--theme-color) 25%, var(--border));
+    border-radius: 10px;
+    color: var(--theme-color);
+    background: color-mix(in srgb, var(--theme-color) 8%, var(--panel-bg));
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--theme-color) 12%, transparent);
+}
+
+.home-brand-mark svg {
+    width: 20px;
+    height: 20px;
+}
+
+.home-theme-button {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--action-color);
+    background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.home-theme-button:hover {
+    border-color: color-mix(in srgb, var(--theme-color) 55%, var(--border));
+    background: var(--panel-bg);
+    transform: translateY(-1px);
+}
+
+.home-theme-button:focus-visible,
+.home-open-button:focus-visible,
+.home-brand:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--theme-color) 32%, transparent);
+    outline-offset: 3px;
+}
+
+.home-theme-button svg {
+    width: 19px;
+    height: 19px;
+}
+
+.home-hero {
+    position: relative;
+    display: flex;
+    width: min(780px, calc(100% - 40px));
+    flex: 1;
+    align-items: center;
+    align-self: center;
+    flex-direction: column;
+    justify-content: center;
+    padding: 54px 0 130px;
+    text-align: center;
+}
+
+.home-hero-glow {
+    position: absolute;
+    z-index: -1;
+    top: 47%;
+    left: 50%;
+    width: min(620px, 90vw);
+    height: 360px;
+    border: 1px solid color-mix(in srgb, var(--theme-color) 12%, transparent);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--theme-color) 4%, transparent);
+    filter: blur(36px);
+    transform: translate(-50%, -50%);
+}
+
+.home-eyebrow {
+    margin-bottom: 23px;
+    padding: 7px 11px;
+    border: 1px solid color-mix(in srgb, var(--theme-color) 24%, var(--border));
+    border-radius: 999px;
+    color: color-mix(in srgb, var(--theme-color) 82%, var(--foreground));
+    background: color-mix(in srgb, var(--theme-color) 7%, var(--panel-bg));
+    font-size: 11px;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.home-hero h1 {
+    color: var(--foreground);
+    font-size: clamp(52px, 8vw, 88px);
+    font-weight: 780;
+    letter-spacing: -0.065em;
+    line-height: 0.96;
+}
+
+.home-hero h1 span {
+    color: var(--theme-color);
+}
+
+.home-intro {
+    max-width: 570px;
+    margin-top: 28px;
+    color: var(--muted);
+    font-size: clamp(16px, 2vw, 19px);
+    line-height: 1.65;
+}
+
+.home-open-button {
+    display: inline-flex;
+    min-height: 52px;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 34px;
+    padding: 0 24px;
+    border: 1px solid color-mix(in srgb, var(--theme-color) 76%, black);
+    border-radius: 10px;
+    color: #fff;
+    background: var(--theme-color);
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--theme-color) 28%, transparent);
+    font-size: 15px;
+    font-weight: 720;
+    transition: box-shadow 0.18s ease, filter 0.18s ease, transform 0.18s ease;
+}
+
+.home-open-button:hover {
+    box-shadow: 0 16px 36px color-mix(in srgb, var(--theme-color) 35%, transparent);
+    filter: brightness(1.06);
+    transform: translateY(-2px);
+}
+
+.home-open-button svg {
+    width: 19px;
+    height: 19px;
+    transition: transform 0.18s ease;
+}
+
+.home-open-button:hover svg {
+    transform: translateX(2px);
+}
+
+.home-local-note {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 18px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.home-local-note > span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22a06b;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #22a06b 14%, transparent);
+}
+
+@media (max-width: 600px) {
+    .home-nav {
+        width: calc(100% - 32px);
+        padding: 18px 0;
+    }
+
+    .home-hero {
+        width: calc(100% - 32px);
+        padding: 34px 0 100px;
+    }
+
+    .home-eyebrow {
+        margin-bottom: 19px;
+        font-size: 9.5px;
+    }
+
+    .home-hero h1 {
+        font-size: clamp(49px, 16vw, 64px);
+    }
+
+    .home-intro {
+        margin-top: 24px;
+        font-size: 16px;
+    }
+
+    .home-open-button {
+        width: min(100%, 280px);
+    }
+
+    .home-local-note {
+        max-width: 240px;
+        align-items: flex-start;
+        justify-content: center;
+        line-height: 1.45;
+    }
+
+    .home-local-note > span {
+        flex: 0 0 auto;
+        margin-top: 5px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-theme-button,
+    .home-open-button,
+    .home-open-button svg {
+        transition: none;
+    }
+}

@@ -1,0 +1,372 @@
+/* ===== QUERY VIEWER ===== */
+
+.qv {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--panel-bg);
+    color: var(--action-color);
+    font-family: var(--font-sans);
+}
+
+.qv-toolbar {
+    flex-shrink: 0;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 10px 0 12px;
+    background: var(--panel-header-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.qv-toolbar-main,
+.qv-toolbar-actions {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+.qv-toolbar-main {
+    gap: 8px;
+}
+
+.qv-toolbar-actions {
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.qv-toolbar-title {
+    color: var(--action-color);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.qv-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 66px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.qv-status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    opacity: 0.65;
+}
+
+.qv-status-ready .qv-status-dot {
+    background: #16a34a;
+    opacity: 1;
+}
+
+.qv-status-edited .qv-status-dot {
+    background: #d97706;
+    opacity: 1;
+}
+
+.qv-status-error .qv-status-dot {
+    background: #dc2626;
+    opacity: 1;
+}
+
+.qv-action-btn {
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel-bg);
+    color: var(--action-color);
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    transition:
+        background 0.15s,
+        border-color 0.15s,
+        color 0.15s;
+}
+
+.qv-action-btn svg {
+    flex-shrink: 0;
+    fill: currentColor;
+}
+
+.qv-action-btn:hover:not(:disabled) {
+    background: var(--status-bg);
+    border-color: var(--action-hover-border);
+}
+
+.qv-action-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.qv-action-primary {
+    border-color: #16a34a;
+    background: #16a34a;
+    color: #fff;
+}
+
+.qv-action-primary:hover:not(:disabled) {
+    border-color: #15803d;
+    background: #15803d;
+    color: #fff;
+}
+
+.dark-theme .qv-action-primary {
+    border-color: #22c55e;
+    background: #22c55e;
+    color: #08220f;
+}
+
+.dark-theme .qv-action-primary:hover:not(:disabled) {
+    border-color: #4ade80;
+    background: #4ade80;
+}
+
+.qv-input-bar {
+    flex-shrink: 0;
+    background: var(--panel-bg);
+    border-bottom: 1px solid var(--border);
+}
+
+.qv-editor-shell {
+    width: 100%;
+    height: clamp(220px, 34vh, 360px);
+    box-sizing: border-box;
+    background: var(--panel-bg);
+}
+
+.qv-editor-shell .monaco-editor .margin,
+.qv-editor-shell .monaco-editor .monaco-editor-background {
+    background: var(--panel-bg);
+}
+
+.qv-editor-shell .monaco-editor .line-numbers {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.qv-result {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.qv-result-meta {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--panel-header-bg);
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.qv-result-meta-error {
+    border-bottom-color: rgba(220, 38, 38, 0.25);
+}
+
+.qv-result-title {
+    margin-right: auto;
+    color: var(--action-color);
+    font-weight: 700;
+}
+
+.qv-result-stat {
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding: 0 7px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--panel-bg);
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.qv-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.qv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.qv-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--panel-header-bg);
+    color: var(--action-color);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    padding: 6px 12px;
+    text-align: left;
+    white-space: nowrap;
+    font-family: var(--font-sans);
+}
+
+.qv-table thead .qv-table-rownum {
+    z-index: 2;
+}
+
+.qv-table tbody td {
+    border-bottom: 1px solid var(--border);
+    padding: 6px 12px;
+    vertical-align: top;
+    color: var(--action-color);
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    line-height: 1.45;
+    max-width: 360px;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.qv-table tbody tr:hover td {
+    background: var(--status-bg);
+}
+
+.qv-table-rownum {
+    position: sticky;
+    left: 0;
+    background: var(--panel-bg);
+    width: 42px;
+    min-width: 42px;
+    max-width: 42px;
+    text-align: right !important;
+    color: var(--muted) !important;
+    font-family: var(--font-sans) !important;
+    font-size: 10px !important;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.55;
+    user-select: none;
+}
+
+.qv-table thead .qv-table-rownum {
+    background: var(--panel-header-bg);
+}
+
+.qv-table tbody tr:hover .qv-table-rownum {
+    background: var(--status-bg);
+}
+
+.qv-empty {
+    flex: 1;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    text-align: center;
+    font-size: 12.5px;
+}
+
+.qv-empty-table {
+    min-height: 120px;
+}
+
+.qv-message {
+    margin: 10px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+}
+
+.qv-message-error {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #b91c1c;
+}
+
+.dark-theme .qv-message-error {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}
+
+.qv-cell-null {
+    color: var(--muted);
+    font-style: italic;
+}
+
+.qv-cell-number {
+    color: #2563eb;
+    font-variant-numeric: tabular-nums;
+}
+
+.qv-cell-bool {
+    font-weight: 700;
+}
+
+.qv-bool-true {
+    color: #059669;
+}
+
+.qv-bool-false {
+    color: #dc2626;
+}
+
+.dark-theme .qv-cell-number {
+    color: #93c5fd;
+}
+
+.dark-theme .qv-bool-true {
+    color: #6ee7b7;
+}
+
+.dark-theme .qv-bool-false {
+    color: #fca5a5;
+}
+
+@media (max-width: 720px) {
+    .qv-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 10px;
+    }
+
+    .qv-toolbar-actions {
+        width: 100%;
+    }
+
+    .qv-action-btn {
+        flex: 1;
+    }
+
+    .qv-editor-shell {
+        height: 220px;
+    }
+
+    .qv-result-meta {
+        flex-wrap: wrap;
+    }
+}

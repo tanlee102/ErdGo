@@ -1,0 +1,150 @@
+/* Shared SQL, Prisma, and ERD Builder new-document chooser. */
+.create-new-file-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.create-new-file-dialog {
+    background: var(--dialog-bg);
+    border: 1px solid var(--dialog-bdr);
+    border-radius: 5px;
+    padding: 20px;
+    max-width: 600px;
+    width: 90%;
+    box-shadow:
+        0 4px 8px 0 rgba(0, 0, 0, 0.2),
+        0 6px 20px 0 rgba(0, 0, 0, 0.19);
+    animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.create-new-file-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.create-new-file-header h2 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.create-new-file-subtitle {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-text-secondary, #6b7280);
+}
+
+.create-new-file-options {
+    display: flex;
+    gap: 12px;
+    flex-direction: column;
+}
+
+.create-option-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    background: var(--dialog-bg);
+    border: 2px solid var(--dialog-bdr);
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: left;
+    width: 100%;
+}
+
+.option-icon {
+    flex-shrink: 0;
+    width: 50px;
+    height: 50px;
+    padding: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    color: white;
+    transition: all 0.15s ease;
+}
+
+.option-icon svg {
+    width: 100%;
+    height: 100%;
+}
+
+.sample-card .option-icon {
+    background: #10b981;
+}
+
+.blank-card .option-icon {
+    background: #3b82f6;
+}
+
+.import-card .option-icon {
+    color: #fff;
+    background: #8b5cf6;
+}
+
+.option-content {
+    flex: 1;
+}
+
+.option-content h3 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.option-content p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--color-text-secondary, #6b7280);
+    line-height: 1.5;
+}
+
+/* Responsive */
+@media (min-width: 768px) {
+    .create-new-file-options {
+        flex-direction: row;
+    }
+
+    .create-option-card {
+        flex-direction: column;
+        text-align: center;
+        align-items: center;
+        flex: 1;
+    }
+}

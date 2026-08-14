@@ -1,0 +1,311 @@
+/* ===== ERD Top Controls Styles ===== */
+
+/* View Mode Toggle (ERD / Data) */
+.erd-view-toggle {
+    display: flex;
+    border-radius: 8px;
+    border: 1px solid var(--action-border);
+    background: var(--button-bg);
+    overflow: hidden;
+    box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.12),
+        0 1px 1px rgba(0, 0, 0, 0.08);
+}
+
+.dark-theme .erd-view-toggle {
+    box-shadow:
+        0 3px 8px rgba(0, 0, 0, 0.22),
+        0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.erd-view-toggle-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 9px 10px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.erd-view-toggle-btn + .erd-view-toggle-btn::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    bottom: 7px;
+    left: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--action-border) 78%, transparent), transparent);
+    pointer-events: none;
+}
+
+.erd-view-toggle-btn.active::before,
+.erd-view-toggle-btn.active + .erd-view-toggle-btn::before {
+    opacity: 0.28;
+}
+
+.erd-view-toggle-btn svg {
+    width: 14px !important;
+    height: 14px !important;
+    flex-shrink: 0;
+}
+
+.erd-view-toggle-btn svg path,
+.erd-view-toggle-btn svg line,
+.erd-view-toggle-btn svg rect,
+.erd-view-toggle-btn svg polyline,
+.erd-view-toggle-btn svg polygon {
+    stroke: currentColor;
+    fill: none;
+}
+
+.erd-view-toggle-btn:hover:not(.active) {
+    color: var(--action-color);
+    background: var(--background);
+}
+
+.erd-view-toggle-btn.active {
+    background: var(--theme-color);
+    color: #fff;
+    cursor: default;
+}
+
+.erd-view-toggle-btn.active svg path,
+.erd-view-toggle-btn.active svg line,
+.erd-view-toggle-btn.active svg rect,
+.erd-view-toggle-btn.active svg polyline,
+.erd-view-toggle-btn.active svg polygon {
+    stroke: #fff;
+}
+
+#erd-top-controls {
+    position: absolute;
+    top: 9px;
+    left: 9px;
+    z-index: 100;
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+
+/* Top Control Buttons - Match Action Button Styles */
+.erd-top-btn {
+    width: 34px;
+    height: 34px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--action-border);
+    background: var(--button-bg);
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--action-color);
+    box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.12),
+        0 1px 1px rgba(0, 0, 0, 0.08);
+    transition:
+        background-color 0.2s,
+        border-color 0.2s,
+        color 0.2s,
+        transform 0.08s ease;
+    flex-shrink: 0;
+    padding: 0; /* consistent sizing */
+}
+
+.erd-top-btn svg {
+    width: 22px;
+    height: 22px;
+}
+
+.erd-top-btn svg path,
+.erd-top-btn svg line {
+    stroke: currentColor;
+    fill: currentColor;
+}
+
+.erd-top-btn .erd-header-tools-icon path {
+    stroke: currentColor;
+    fill: none;
+}
+
+.erd-top-btn .erd-minimap-toggle-icon {
+    width: 24px;
+    height: 24px;
+}
+
+.erd-top-btn .erd-minimap-toggle-icon ellipse,
+.erd-top-btn .erd-minimap-toggle-icon line {
+    fill: none;
+    stroke: currentColor;
+}
+
+.erd-top-btn:focus-visible {
+    outline: 2px solid var(--focus-outline);
+    outline-offset: 2px;
+}
+
+.erd-top-btn:hover {
+    background-color: var(--background);
+    border-color: var(--action-hover-border);
+    box-shadow:
+        0 4px 10px rgba(0, 0, 0, 0.16),
+        0 2px 3px rgba(0, 0, 0, 0.12);
+}
+
+.dark-theme .erd-top-btn {
+    box-shadow:
+        0 3px 8px rgba(0, 0, 0, 0.22),
+        0 1px 2px rgba(0, 0, 0, 0.16);
+}
+
+.dark-theme .erd-top-btn:hover {
+    box-shadow:
+        0 5px 12px rgba(0, 0, 0, 0.28),
+        0 2px 3px rgba(0, 0, 0, 0.2);
+}
+
+.erd-top-btn:active {
+    transform: translateY(1px);
+}
+
+.erd-top-btn--toggle.active {
+    color: var(--theme-color);
+    border-color: color-mix(in srgb, var(--theme-color) 45%, var(--action-border));
+    background: color-mix(in srgb, var(--theme-color) 10%, var(--button-bg));
+}
+
+.erd-top-btn--toggle.active:hover {
+    border-color: color-mix(in srgb, var(--theme-color) 58%, var(--action-hover-border));
+    background: color-mix(in srgb, var(--theme-color) 14%, var(--background));
+}
+
+.erd-export-wrap {
+    position: relative;
+}
+
+.erd-export-menu {
+    position: absolute;
+    top: 42px;
+    left: 0;
+    z-index: 120;
+    min-width: 220px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--button-bg);
+    border: 1px solid var(--action-border);
+    border-radius: 8px;
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.12),
+        0 2px 8px rgba(0, 0, 0, 0.08);
+    backdrop-filter: blur(12px);
+    animation: exportMenuSlideIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark-theme .erd-export-menu {
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.36),
+        0 2px 8px rgba(0, 0, 0, 0.24);
+    background: color-mix(in srgb, var(--button-bg) 92%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+}
+
+@keyframes exportMenuSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Arrow pointer pointing up to button */
+.erd-export-menu::before,
+.erd-export-menu::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+    left: 9px;
+    width: 0;
+    height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+}
+
+.erd-export-menu::before {
+    top: -9px;
+    border-bottom: 8px solid var(--action-border);
+}
+
+.erd-export-menu::after {
+    top: -8px;
+    border-bottom: 8px solid var(--button-bg);
+}
+
+.erd-export-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.erd-export-group-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 4px 6px 2px;
+}
+
+.erd-export-item {
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--action-color);
+    cursor: pointer;
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+}
+
+.erd-export-item:hover {
+    background: var(--list-file-dropdown-hover);
+}
+
+.erd-export-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.erd-export-meta {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--action-border);
+    color: var(--muted);
+    background: var(--background);
+}

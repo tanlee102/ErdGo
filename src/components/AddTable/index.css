@@ -1,0 +1,1144 @@
+/* ─── Add Table Form Container ──────────────────────────────────── */
+.add-table-form-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    width: 100%;
+    font-size: 14px;
+    box-sizing: border-box;
+    color: var(--color-text);
+}
+
+/* ─── Dialect selector ──────────────────────────────────────────── */
+.add-table-dialect-section {
+    background: linear-gradient(
+        180deg,
+        rgba(44, 112, 237, 0.05) 0%,
+        rgba(44, 112, 237, 0) 100%
+    );
+}
+
+.add-table-dialect-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.add-table-dialect-pills {
+    display: inline-flex;
+    background: var(--background);
+    border: 1.5px solid var(--dialog-input-bdr);
+    border-radius: 9px;
+    padding: 3px;
+    gap: 0;
+    flex: 1;
+    min-width: 0;
+}
+
+.add-table-dialect-pill {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--muted, #888);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+    letter-spacing: 0.02em;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.add-table-dialect-pill:hover:not(.is-active) {
+    background: rgba(128, 128, 128, 0.08);
+    color: var(--color-text);
+}
+
+.add-table-dialect-pill.is-active {
+    background: var(--theme-color);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(44, 112, 237, 0.35);
+}
+
+.add-table-dialect-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    background: rgba(44, 112, 237, 0.15);
+    color: var(--theme-color);
+    border: 1px solid rgba(44, 112, 237, 0.3);
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: none;
+    line-height: 1.3;
+}
+
+/* ─── IF NOT EXISTS toggle (sits beside dialect pills) ──────────── */
+.add-table-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border: 1.5px solid var(--dialog-input-bdr);
+    border-radius: 9px;
+    background: var(--background);
+    color: var(--muted, #888);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.18s ease, color 0.18s ease, background 0.18s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.add-table-toggle:hover {
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+}
+
+.add-table-toggle input[type='checkbox'] {
+    display: none;
+}
+
+.add-table-toggle::before {
+    content: '';
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 1.5px solid currentColor;
+    border-radius: 3px;
+    background: transparent;
+    transition: background 0.15s ease;
+    flex-shrink: 0;
+}
+
+.add-table-toggle.is-checked {
+    background: rgba(44, 112, 237, 0.12);
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+}
+
+.add-table-toggle.is-checked::before {
+    background: var(--theme-color);
+    border-color: var(--theme-color);
+    box-shadow: inset 0 0 0 2.5px var(--background);
+}
+
+/* ─── Section warn pill (e.g. duplicate column count) ───────────── */
+.add-table-section-warn {
+    margin-left: auto;
+    padding: 1px 7px;
+    background: rgba(229, 62, 62, 0.13);
+    color: #e53e3e;
+    border: 1px solid rgba(229, 62, 62, 0.3);
+    border-radius: 9px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: none;
+}
+
+/* ─── Section Blocks ────────────────────────────────────────────── */
+.add-table-section {
+    padding: 16px 20px;
+}
+
+.add-table-section + .add-table-section {
+    border-top: 1px solid var(--dialog-bdr);
+}
+
+/* ─── Section Labels ────────────────────────────────────────────── */
+.add-table-section-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--theme-color);
+    margin-bottom: 10px;
+    line-height: 1;
+}
+
+.add-table-section-label > .add-table-section-warn,
+.add-table-section-label > .add-table-dialect-badge {
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* ─── Table Name Row ────────────────────────────────────────────── */
+.add-table-top-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.add-table-name-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--background);
+    border: 1.5px solid var(--dialog-input-bdr);
+    border-radius: 8px;
+    padding: 0 12px;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.add-table-name-field:focus-within {
+    border-color: var(--theme-color);
+    box-shadow: 0 0 0 2.5px rgba(44, 112, 237, 0.18);
+}
+
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+    .add-table-name-field:focus-within {
+        box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--theme-color) 18%, transparent);
+    }
+}
+
+.add-table-name-field.has-error {
+    border-color: #e53e3e;
+    box-shadow: 0 0 0 2.5px rgba(229, 62, 62, 0.18);
+}
+
+.add-table-name-prefix {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted, #888);
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    user-select: none;
+    flex-shrink: 0;
+    border-right: 1px solid var(--dialog-bdr);
+    padding-right: 10px;
+    margin-right: 2px;
+}
+
+.add-table-input-name {
+    flex: 1;
+    padding: 9px 0;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    outline: none;
+    min-width: 0;
+}
+
+.add-table-input-name::placeholder {
+    color: var(--muted, #aaa);
+    font-weight: 400;
+}
+
+.add-table-error-message {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #e53e3e;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 2px 2px 0;
+}
+
+.add-table-error-message::before {
+    content: '⚠';
+    font-size: 11px;
+}
+
+.add-table-validation-errors {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+    padding: 9px 11px;
+    border: 1px solid rgba(229, 62, 62, 0.28);
+    border-radius: 8px;
+    background: rgba(229, 62, 62, 0.08);
+    color: #d64545;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+/* ─── Columns Section ───────────────────────────────────────────── */
+.add-table-columns-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.add-table-columns-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* ─── Column Row ────────────────────────────────────────────────── */
+.add-table-column-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    gap: 6px;
+    align-items: center;
+    background: var(--background);
+    border: 1px solid var(--dialog-bdr);
+    border-radius: 8px;
+    padding: 5px 8px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.add-table-column-row:hover {
+    border-color: var(--dialog-input-bdr);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+}
+
+.add-table-column-row:focus-within {
+    border-color: var(--theme-color);
+    box-shadow: 0 0 0 2px rgba(44, 112, 237, 0.14);
+}
+
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+    .add-table-column-row:focus-within {
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-color) 14%, transparent);
+    }
+}
+
+/* row number badge — visually subtle, hidden on narrow screens */
+.add-table-column-row::before {
+    content: attr(data-index);
+    position: absolute;
+    left: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: var(--muted, #bbb);
+    font-weight: 700;
+    width: 14px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.55;
+}
+
+@media (max-width: 720px) {
+    .add-table-column-row::before {
+        display: none;
+    }
+}
+
+.add-table-col-name,
+.add-table-col-type {
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 13px;
+    outline: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    min-width: 0;
+}
+
+.add-table-col-name:hover,
+.add-table-col-type:hover {
+    background: rgba(128, 128, 128, 0.08);
+    border-color: var(--dialog-bdr);
+}
+
+.add-table-col-name:focus,
+.add-table-col-type:focus {
+    background: rgba(44, 112, 237, 0.06);
+    border-color: var(--theme-color);
+}
+
+.add-table-col-name::placeholder,
+.add-table-col-type::placeholder {
+    color: var(--muted, #bbb);
+    font-size: 12px;
+}
+
+.add-table-type-badges-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.add-table-col-name {
+    flex: 1;
+}
+
+.add-table-col-type {
+    flex: 1;
+}
+
+/* ─── Constraint Pills on Row ───────────────────────────────────── */
+.add-table-col-badges {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    flex-shrink: 0;
+    max-width: 56%;
+}
+
+.add-table-col-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: default;
+    user-select: none;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+.add-table-col-badge.badge-pk {
+    background: rgba(44, 112, 237, 0.15);
+    color: var(--theme-color);
+    border: 1px solid rgba(44, 112, 237, 0.3);
+}
+
+.add-table-col-badge.badge-nn {
+    background: rgba(245, 158, 11, 0.14);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.add-table-col-badge.badge-uq {
+    background: rgba(16, 185, 129, 0.13);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+}
+
+.add-table-col-badge.badge-fk {
+    background: rgba(139, 92, 246, 0.13);
+    color: #7c3aed;
+    border: 1px solid rgba(139, 92, 246, 0.28);
+}
+
+.add-table-col-badge.badge-ai {
+    background: rgba(236, 72, 153, 0.13);
+    color: #db2777;
+    border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.add-table-col-badge.badge-gen {
+    background: rgba(20, 184, 166, 0.13);
+    color: #0d9488;
+    border: 1px solid rgba(20, 184, 166, 0.3);
+}
+
+.dark-theme .add-table-col-badge.badge-ai {
+    color: #f472b6;
+}
+
+.dark-theme .add-table-col-badge.badge-gen {
+    color: #2dd4bf;
+}
+
+@media (prefers-color-scheme: dark) {
+    .add-table-col-badge.badge-ai {
+        color: #f472b6;
+    }
+    .add-table-col-badge.badge-gen {
+        color: #2dd4bf;
+    }
+}
+
+/* ─── Row error state (e.g. duplicate column name) ──────────────── */
+.add-table-column-row.has-error {
+    border-color: rgba(229, 62, 62, 0.55);
+    box-shadow: 0 0 0 2px rgba(229, 62, 62, 0.12);
+}
+
+/* Dark theme badge adjustments */
+.dark-theme .add-table-col-badge.badge-nn {
+    color: #fbbf24;
+}
+
+.dark-theme .add-table-col-badge.badge-uq {
+    color: #34d399;
+}
+
+.dark-theme .add-table-col-badge.badge-fk {
+    color: #a78bfa;
+}
+
+@media (prefers-color-scheme: dark) {
+    .add-table-col-badge.badge-nn {
+        color: #fbbf24;
+    }
+    .add-table-col-badge.badge-uq {
+        color: #34d399;
+    }
+    .add-table-col-badge.badge-fk {
+        color: #a78bfa;
+    }
+}
+
+/* ─── Icon Buttons ──────────────────────────────────────────────── */
+.add-table-column-controls {
+    display: flex;
+    gap: 1px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.add-table-btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 4px;
+    background: transparent;
+    color: var(--muted, #888);
+    border: 1px solid transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+}
+
+.add-table-btn-icon:hover {
+    background: rgba(128, 128, 128, 0.1);
+    border-color: var(--dialog-bdr);
+    color: var(--color-text);
+}
+
+.add-table-dropdown-btn.active,
+.add-table-dropdown-btn:focus-visible {
+    background: rgba(44, 112, 237, 0.12);
+    border-color: rgba(44, 112, 237, 0.4);
+    color: var(--theme-color);
+    outline: none;
+}
+
+.add-table-btn-icon.btn-remove:hover {
+    background: rgba(229, 62, 62, 0.1);
+    border-color: rgba(229, 62, 62, 0.35);
+    color: #e53e3e;
+}
+
+.add-table-move-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.add-table-column-row:hover .add-table-move-btn,
+.add-table-column-row:focus-within .add-table-move-btn {
+    opacity: 0.7;
+    pointer-events: auto;
+}
+
+.add-table-column-row:hover .add-table-move-btn:hover,
+.add-table-column-row:focus-within .add-table-move-btn:hover {
+    opacity: 1;
+}
+
+.add-table-move-btn:disabled {
+    opacity: 0.15 !important;
+    cursor: not-allowed;
+    background: transparent !important;
+    border-color: transparent !important;
+    pointer-events: none;
+}
+
+/* Always show on touch devices (no hover) */
+@media (hover: none) {
+    .add-table-move-btn {
+        opacity: 0.55;
+        pointer-events: auto;
+    }
+}
+
+/* ─── Add Column Button ─────────────────────────────────────────── */
+.add-table-cols-actions {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.add-table-add-col-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1.5px dashed var(--dialog-input-bdr);
+    color: var(--muted, #888);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    width: 100%;
+    justify-content: center;
+}
+
+.add-table-add-col-btn:hover {
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+    background: rgba(44, 112, 237, 0.05);
+}
+
+/* ─── SQL Preview ───────────────────────────────────────────────── */
+.add-table-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.add-table-sql-preview {
+    background: #0f1923;
+    color: #c9d1d9;
+    padding: 12px 14px;
+    border-radius: 7px;
+    max-height: 180px;
+    overflow: auto;
+    font-size: 12.5px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+    line-height: 1.6;
+    border: 1px solid var(--dialog-bdr);
+    margin: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dialog-bdr) transparent;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.light-theme .add-table-sql-preview {
+    background: #0f1923;
+    color: #c9d1d9;
+}
+
+.dark-theme .add-table-sql-preview {
+    background: #0d1117;
+    color: #e6edf3;
+}
+
+@media (prefers-color-scheme: dark) {
+    .add-table-sql-preview {
+        background: #0d1117;
+        color: #e6edf3;
+    }
+}
+
+/* ─── Actions Row ───────────────────────────────────────────────── */
+.add-table-actions-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 20px 16px;
+    border-top: 1px solid var(--dialog-bdr);
+}
+
+.add-table-cancel-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--color-text);
+    border: 1px solid var(--dialog-bdr);
+    border-radius: 7px;
+    padding: 8px 16px;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.add-table-cancel-btn:hover {
+    background: rgba(229, 62, 62, 0.07);
+    border-color: rgba(229, 62, 62, 0.4);
+    color: #e53e3e;
+}
+
+.add-table-submit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--theme-color);
+    color: white;
+    border: none;
+    border-radius: 7px;
+    padding: 8px 20px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+    box-shadow: 0 2px 8px rgba(44, 112, 237, 0.35);
+}
+
+.add-table-submit-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(44, 112, 237, 0.4);
+}
+
+.add-table-submit-btn:active:not(:disabled) {
+    transform: translateY(0);
+    filter: brightness(0.95);
+}
+
+.add-table-submit-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+    filter: grayscale(0.3);
+}
+
+/* ─── Dropdown ──────────────────────────────────────────────────── */
+.add-table-column-options-dropdown {
+    position: fixed !important;
+    background: var(--dialog-bg);
+    border: 1px solid var(--dialog-bdr);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16), 0 4px 10px rgba(0, 0, 0, 0.08);
+    z-index: 9999 !important;
+    min-width: 280px;
+    max-width: 340px;
+    width: auto;
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    animation: addTableDropdownIn 0.17s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--dialog-bdr) transparent;
+}
+
+.add-table-column-options-dropdown::-webkit-scrollbar {
+    width: 6px;
+}
+.add-table-column-options-dropdown::-webkit-scrollbar-thumb {
+    background: var(--dialog-bdr);
+    border-radius: 3px;
+}
+
+@keyframes addTableDropdownIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.add-table-dropdown-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+}
+
+/* Tiny visual breather at the very top so the first border doesn't kiss
+   the popup top-edge */
+.add-table-dropdown-content > :first-child {
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+}
+
+.add-table-dropdown-content > :last-child {
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+/* ─── Dropdown Constraint Toggles ───────────────────────────────── */
+.add-table-constraint-group {
+    display: flex;
+    gap: 6px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--dialog-bdr);
+}
+
+.add-table-small-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--color-text);
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 7px;
+    border: 1.5px solid var(--dialog-bdr);
+    background: var(--background);
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+    user-select: none;
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.add-table-small-check:hover {
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+    background: rgba(44, 112, 237, 0.06);
+}
+
+.add-table-small-check input[type='checkbox'] {
+    display: none;
+}
+
+/* Checked state — class-based (set via JS) and :has() progressive enhancement */
+.add-table-small-check.is-checked {
+    background: rgba(44, 112, 237, 0.12);
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+}
+
+@supports selector(:has(*)) {
+    .add-table-small-check:has(input:checked) {
+        background: rgba(44, 112, 237, 0.12);
+        border-color: var(--theme-color);
+        color: var(--theme-color);
+    }
+}
+
+.add-table-small-check.is-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.add-table-small-check-wide {
+    flex: 1;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+}
+
+.add-table-small-check-wide .add-table-hint {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--muted, #888);
+    text-transform: none;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    opacity: 0.9;
+}
+
+.add-table-small-check-wide.is-checked .add-table-hint {
+    color: var(--theme-color);
+    opacity: 0.85;
+}
+
+/* ─── Default-value quick-pick chips ────────────────────────────── */
+.add-table-default-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 7px;
+}
+
+.add-table-default-chip {
+    appearance: none;
+    background: var(--background);
+    border: 1px solid var(--dialog-bdr);
+    color: var(--muted, #888);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    line-height: 1.3;
+}
+
+.add-table-default-chip:hover {
+    background: rgba(44, 112, 237, 0.1);
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+}
+
+.add-table-default-chip:active {
+    background: rgba(44, 112, 237, 0.18);
+}
+
+/* ─── FK action row (ON DELETE / ON UPDATE) ─────────────────────── */
+.add-table-fk-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+    /* parent .add-table-field uses gap: 8px so no margin-top needed */
+}
+
+@media (max-width: 380px) {
+    .add-table-fk-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================
+   Dropdown — field-based layout (one labeled field per row)
+   ============================================================ */
+
+.add-table-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 14px;
+    border-bottom: 1px solid var(--dialog-bdr);
+}
+
+.add-table-field:last-child {
+    border-bottom: none;
+}
+
+.add-table-field-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted, #888);
+    line-height: 1;
+}
+
+.add-table-field-label > span:first-child {
+    color: var(--color-text);
+    opacity: 0.85;
+}
+
+.add-table-field-hint {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--muted, #aaa);
+    text-transform: none;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.add-table-field-disabled-note {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--muted, #999);
+    text-transform: none;
+    letter-spacing: 0.02em;
+    font-style: italic;
+}
+
+/* ── Single input inside a field ────────────────────────────── */
+.add-table-field-input {
+    width: 100%;
+    padding: 8px 11px;
+    border: 1.5px solid var(--dialog-input-bdr);
+    background: var(--background);
+    border-radius: 7px;
+    font-size: 12.5px;
+    color: var(--color-text);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    box-sizing: border-box;
+}
+
+.add-table-field-input:focus {
+    border-color: var(--theme-color);
+    box-shadow: 0 0 0 2.5px rgba(44, 112, 237, 0.15);
+}
+
+.add-table-field-input::placeholder {
+    color: var(--muted, #bbb);
+    font-size: 12px;
+}
+
+.add-table-field-input:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: rgba(128, 128, 128, 0.04);
+}
+
+.add-table-field-input-mono {
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 12px;
+}
+
+/* ── Select inside a field ──────────────────────────────────── */
+.add-table-field-select {
+    width: 100%;
+    padding: 8px 30px 8px 11px;
+    border: 1.5px solid var(--dialog-input-bdr);
+    border-radius: 7px;
+    font-size: 12.5px;
+    background: var(--background);
+    color: var(--color-text);
+    cursor: pointer;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    background-size: 14px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    box-sizing: border-box;
+}
+
+.add-table-field-select:focus {
+    border-color: var(--theme-color);
+    box-shadow: 0 0 0 2.5px rgba(44, 112, 237, 0.15);
+}
+
+.add-table-field-select:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background-color: rgba(128, 128, 128, 0.04);
+}
+
+/* ── DEFAULT chips — sit immediately under the DEFAULT input ── */
+.add-table-default-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 0; /* gap on parent .add-table-field handles spacing */
+}
+
+.add-table-default-chip.is-active {
+    background: rgba(44, 112, 237, 0.16);
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+    font-weight: 700;
+}
+
+/* ── Foreign-key field grid ─────────────────────────────────── */
+.add-table-field-fk .add-table-fk-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+}
+
+@media (max-width: 380px) {
+    .add-table-field-fk .add-table-fk-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.add-table-fk-clear {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: var(--muted, #aaa);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s ease;
+}
+
+.add-table-fk-clear:hover {
+    color: #e53e3e;
+}
+
+/* ─── Enum Values ───────────────────────────────────────────────── */
+.add-table-enum-values-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.add-table-enum-value-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    background: rgba(44, 112, 237, 0.1);
+    border: 1px solid rgba(44, 112, 237, 0.25);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--theme-color);
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-weight: 500;
+    line-height: 1.3;
+}
+
+/* ─── Responsive ────────────────────────────────────────────────── */
+@media (max-width: 880px) {
+    .add-table-column-row {
+        grid-template-columns: 1fr 1.6fr auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .add-table-section {
+        padding: 12px 16px;
+    }
+
+    .add-table-actions-row {
+        padding: 12px 16px;
+    }
+
+    .add-table-column-options-dropdown {
+        min-width: 200px;
+        max-width: calc(100dvw - 32px);
+    }
+
+    .add-table-column-row::before {
+        display: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .add-table-column-row {
+        grid-template-columns: 1fr 1.4fr auto;
+        gap: 4px;
+    }
+
+    .add-table-section {
+        padding: 10px 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .add-table-section {
+        padding: 10px 12px;
+    }
+
+    .add-table-column-options-dropdown {
+        min-width: 200px;
+        max-width: calc(100dvw - 24px);
+    }
+}

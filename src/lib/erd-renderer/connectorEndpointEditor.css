@@ -1,0 +1,137 @@
+/* Canvas-overlay handles used to reposition selected relationship endpoints. */
+.erd-connector-side-popup {
+    position: absolute;
+    z-index: 2400;
+    display: none;
+    width: min(280px, calc(100% - 20px));
+    padding: 10px;
+    color: var(--foreground, #172033);
+    background: color-mix(in srgb, var(--dialog-bg, #fff) 96%, transparent);
+    border: 1px solid var(--border, #d7dce5);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+    backdrop-filter: blur(12px);
+    box-sizing: border-box;
+}
+
+.erd-connector-side-popup.is-open {
+    display: grid;
+    gap: 9px;
+}
+
+.erd-connector-side-popup__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.erd-connector-side-popup__title {
+    overflow: hidden;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.erd-connector-side-popup__hint {
+    margin: 2px 0 0;
+    color: var(--color-text-secondary, #64748b);
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.erd-connector-side-popup__close {
+    display: inline-grid;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    flex: 0 0 24px;
+    place-items: center;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.erd-connector-side-popup__close:hover,
+.erd-connector-side-popup__close:focus-visible {
+    background: color-mix(in srgb, var(--foreground, #172033) 9%, transparent);
+    outline: none;
+}
+
+.erd-connector-side-popup__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+}
+
+.erd-connector-side-popup__endpoint {
+    min-width: 0;
+}
+
+.erd-connector-side-popup__endpoint strong,
+.erd-connector-side-popup__endpoint span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.erd-connector-side-popup__endpoint strong {
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.erd-connector-side-popup__endpoint span {
+    color: var(--color-text-secondary, #64748b);
+    font-size: 10px;
+}
+
+.erd-connector-side-popup__options {
+    display: inline-flex;
+    padding: 2px;
+    background: color-mix(in srgb, var(--foreground, #172033) 7%, transparent);
+    border-radius: 7px;
+}
+
+.erd-connector-side-popup__option {
+    min-width: 34px;
+    height: 26px;
+    padding: 0 7px;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.erd-connector-side-popup__option:hover,
+.erd-connector-side-popup__option:focus-visible {
+    background: color-mix(in srgb, var(--theme-color, #2c70ed) 12%, transparent);
+    outline: none;
+}
+
+.erd-connector-side-popup__option.is-selected {
+    color: #fff;
+    background: var(--theme-color, #2c70ed);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
+}
+
+@media (max-width: 640px) {
+    .erd-connector-side-popup {
+        width: min(300px, calc(100% - 16px));
+    }
+
+    .erd-connector-side-popup__option {
+        min-width: 40px;
+        height: 30px;
+    }
+}

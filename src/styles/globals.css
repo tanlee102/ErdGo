@@ -1,0 +1,486 @@
+:root {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --theme-color: rgb(44, 112, 237);
+    --background: #ffffff;
+    --foreground: #000000;
+    --button-bg: #f0f0f0;
+    --box-shadow: rgba(0, 0, 0, 0.18) 0px 2px 4px;
+    --dialog-bdr: rgb(215, 215, 215);
+    --file-name-input-bdr: rgb(215, 215, 215);
+    --dialog-bg: #ffffff;
+    --dialog-input-bdr: #b9b9b9;
+    --color-text: black;
+    --dropdown-hover-bg: #c0c0c0;
+
+    /*ERD*/
+    --erd-bg: #ffffff;
+
+    /*SQL Editor*/
+    --panel-bg: #fff;
+    --panel-header-bg: #fafafa;
+    --border: #e0e0e0;
+    --splitter-bg: #e0e0e0;
+    --splitter-hover: #2563eb;
+    --splitter-handle: #cbd5e1;
+    --action-border: #d0d7de;
+    --action-hover-border: #8c959f;
+    --action-color: #24292f;
+    --status-bg: #f6f8fa;
+    --muted: #656d76;
+    --error-bg: #dc2626;
+    --warning-bg: #f59e0b;
+    --editor-loading-color: #666;
+    --focus-outline: #2563eb;
+    --sql-file-name-input-bg: rgb(243, 243, 243);
+    --erd-sql-loading-overlay-bg: rgba(255, 255, 255, 0.6);
+
+    /* List File Modal */
+    --list-file-bg: #ffffff;
+    --list-file-header-bg: #f8f9fa;
+    --list-file-border: #e1e4e8;
+    --list-file-search-bg: #ffffff;
+    --list-file-search-border: #d1d5da;
+    --list-file-search-focus: #0366d6;
+    --list-file-table-header-bg: #f6f8fa;
+    --list-file-table-header-text: #586069;
+    --list-file-table-row-hover: #f1f1f1;
+    --list-file-table-border: #e1e4e8;
+    --list-file-text-primary: #24292e;
+    --list-file-text-secondary: #586069;
+    --list-file-text-muted: #6a737d;
+    --list-file-icon-color: #6a737d;
+    --list-file-close-hover: #f1f3f4;
+    --list-file-dropdown-bg: #ffffff;
+    --list-file-dropdown-border: #d1d5da;
+    --list-file-dropdown-shadow: rgba(27, 31, 35, 0.15) 0px 3px 12px;
+    --list-file-dropdown-hover: #f6f8fa;
+    --list-file-danger-color: #d73a49;
+    --list-file-danger-hover: #fef2f2;
+    --list-file-danger-hover-bg: #d73a49;
+    --list-file-scrollbar-thumb: #c1c8cd;
+    --list-file-scrollbar-thumb-hover: #a1a8ad;
+    --list-file-hover-bg: #f6f8fa;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --theme-color: cornflowerblue;
+        --background: #0a0a0f;
+        --foreground: #f0f0f5;
+        --button-bg: #323232;
+        --dialog-bdr: rgb(73, 73, 73);
+        --file-name-input-bdr: rgb(30, 30, 30);
+        --dialog-bg: #2c2c2c;
+        --dialog-input-bdr: #000000;
+        --box-shadow: rgba(0, 0, 0, 0.217) 0px 2px 7px;
+        --color-text: white;
+        --dropdown-hover-bg: #4d4d4d;
+
+        /*ERD*/
+        --erd-bg: #3c3c3cff;
+
+        /*SQL Editor*/
+        --panel-bg: #2d2d30;
+        --panel-header-bg: #3c3c3c;
+        --border: #404040;
+        --splitter-bg: #404040;
+        --splitter-hover: #007acc;
+        --splitter-handle: #606060;
+        --action-border: #505050;
+        --action-hover-border: #606060;
+        --action-color: #e1e1e1;
+        --status-bg: #3c3c3c;
+        --muted: #b0b0b0;
+        --error-bg: #b91c1c;
+        --warning-bg: #f59e0b;
+        --editor-loading-color: #bdbdbd;
+        --focus-outline: #60a5fa;
+        --sql-file-name-input-bg: #2d2d30;
+        --erd-sql-loading-overlay-bg: rgba(0, 0, 0, 0.6);
+
+        /* List File Modal - Dark Theme */
+        --list-file-bg: #1c2128;
+        --list-file-header-bg: #21262d;
+        --list-file-border: #30363d;
+        --list-file-search-bg: #0d1117;
+        --list-file-search-border: #30363d;
+        --list-file-search-focus: #58a6ff;
+        --list-file-table-header-bg: #21262d;
+        --list-file-table-header-text: #8b949e;
+        --list-file-table-row-hover: #2a313a;
+        --list-file-table-border: #30363d;
+        --list-file-text-primary: #f0f6fc;
+        --list-file-text-secondary: #8b949e;
+        --list-file-text-muted: #6e7681;
+        --list-file-icon-color: #6e7681;
+        --list-file-close-hover: #30363d;
+        --list-file-dropdown-bg: #21262d;
+        --list-file-dropdown-border: #30363d;
+        --list-file-dropdown-shadow: rgba(1, 4, 9, 0.8) 0px 16px 32px;
+        --list-file-dropdown-hover: #30363d;
+        --list-file-danger-color: #f85149;
+        --list-file-danger-hover: #490202;
+        --list-file-danger-hover-bg: #f85149;
+        --list-file-scrollbar-thumb: #4a5568;
+        --list-file-scrollbar-thumb-hover: #6b7280;
+        --list-file-hover-bg: #30363d;
+    }
+}
+
+.light-theme {
+    --theme-color: rgb(44, 112, 237);
+    --background: #ffffff;
+    --foreground: #000000;
+    --button-bg: #f0f0f0;
+    --box-shadow: rgba(0, 0, 0, 0.18) 0px 2px 4px;
+    --dialog-bdr: rgb(215, 215, 215);
+    --file-name-input-bdr: rgb(215, 215, 215);
+    --dialog-bg: #ffffff;
+    --dialog-input-bdr: #b9b9b9;
+    --color-text: black;
+    --dropdown-hover-bg: #c0c0c0;
+
+    /*ERD*/
+    --erd-bg: #ffffff;
+
+    /*SQL Editor*/
+    --panel-bg: #fff;
+    --panel-header-bg: #fafafa;
+    --border: #e0e0e0;
+    --splitter-bg: #e0e0e0;
+    --splitter-hover: #2563eb;
+    --splitter-handle: #cbd5e1;
+    --action-border: #d0d7de;
+    --action-hover-border: #8c959f;
+    --action-color: #24292f;
+    --status-bg: #f6f8fa;
+    --muted: #656d76;
+    --error-bg: #dc2626;
+    --warning-bg: #f59e0b;
+    --editor-loading-color: #666;
+    --focus-outline: #2563eb;
+    --sql-file-name-input-bg: rgb(243, 243, 243);
+    --erd-sql-loading-overlay-bg: rgba(255, 255, 255, 0.6);
+
+    /* List File Modal - Light Theme */
+    --list-file-bg: #ffffff;
+    --list-file-header-bg: #f8f9fa;
+    --list-file-border: #e1e4e8;
+    --list-file-search-bg: #ffffff;
+    --list-file-search-border: #d1d5da;
+    --list-file-search-focus: #0366d6;
+    --list-file-table-header-bg: #f6f8fa;
+    --list-file-table-header-text: #586069;
+    --list-file-table-row-hover: #f1f1f1;
+    --list-file-table-border: #e1e4e8;
+    --list-file-text-primary: #24292e;
+    --list-file-text-secondary: #586069;
+    --list-file-text-muted: #6a737d;
+    --list-file-icon-color: #6a737d;
+    --list-file-close-hover: #f1f3f4;
+    --list-file-dropdown-bg: #ffffff;
+    --list-file-dropdown-border: #d1d5da;
+    --list-file-dropdown-shadow: rgba(27, 31, 35, 0.15) 0px 3px 12px;
+    --list-file-dropdown-hover: #f6f8fa;
+    --list-file-danger-color: #d73a49;
+    --list-file-danger-hover: #fef2f2;
+    --list-file-danger-hover-bg: #d73a49;
+    --list-file-scrollbar-thumb: #c1c8cd;
+    --list-file-scrollbar-thumb-hover: #a1a8ad;
+    --list-file-hover-bg: #f6f8fa;
+}
+
+.dark-theme {
+    --theme-color: cornflowerblue;
+    --background: #0a0a0f;
+    --foreground: #f0f0f5;
+    --button-bg: #323232;
+    --dialog-bdr: rgb(73, 73, 73);
+    --file-name-input-bdr: rgb(30, 30, 30);
+    --dialog-bg: #2c2c2c;
+    --dialog-input-bdr: #000000;
+    --box-shadow: rgba(0, 0, 0, 0.217) 0px 2px 7px;
+    --color-text: white;
+    --dropdown-hover-bg: #4d4d4d;
+
+    /*ERD*/
+    --erd-bg: #3c3c3cff;
+
+    /*SQL Editor*/
+    --panel-bg: #2d2d30;
+    --panel-header-bg: #3c3c3c;
+    --border: #404040;
+    --splitter-bg: #404040;
+    --splitter-hover: #007acc;
+    --splitter-handle: #606060;
+    --action-border: #505050;
+    --action-hover-border: #606060;
+    --action-color: #e1e1e1;
+    --status-bg: #3c3c3c;
+    --muted: #b0b0b0;
+    --error-bg: #b91c1c;
+    --editor-loading-color: #bdbdbd;
+    --focus-outline: #60a5fa;
+    --sql-file-name-input-bg: #2d2d30;
+    --erd-sql-loading-overlay-bg: rgba(0, 0, 0, 0.6);
+
+    /* List File Modal - Dark Theme */
+    --list-file-bg: #1c2128;
+    --list-file-header-bg: #21262d;
+    --list-file-border: #30363d;
+    --list-file-search-bg: #0d1117;
+    --list-file-search-border: #30363d;
+    --list-file-search-focus: #58a6ff;
+    --list-file-table-header-bg: #21262d;
+    --list-file-table-header-text: #8b949e;
+    --list-file-table-row-hover: #2a313a;
+    --list-file-table-border: #30363d;
+    --list-file-text-primary: #f0f6fc;
+    --list-file-text-secondary: #8b949e;
+    --list-file-text-muted: #6e7681;
+    --list-file-icon-color: #6e7681;
+    --list-file-close-hover: #30363d;
+    --list-file-dropdown-bg: #21262d;
+    --list-file-dropdown-border: #30363d;
+    --list-file-dropdown-shadow: rgba(1, 4, 9, 0.8) 0px 16px 32px;
+    --list-file-dropdown-hover: #30363d;
+    --list-file-danger-color: #f85149;
+    --list-file-danger-hover: #490202;
+    --list-file-danger-hover-bg: #f85149;
+    --list-file-scrollbar-thumb: #4a5568;
+    --list-file-scrollbar-thumb-hover: #6b7280;
+    --list-file-hover-bg: #30363d;
+}
+
+:root {
+    --text-primary: #24292e;
+    --text-secondary: #586069;
+    --bg-secondary: #ffffff;
+    --border-color: #e1e4e8;
+    --primary-color: #0366d6;
+    --primary-hover: rgb(44, 112, 237);
+}
+
+[data-theme='dark'] {
+    --text-primary: #f0f6fc;
+    --text-secondary: #8b949e;
+    --bg-secondary: #1c2128;
+    --border-color: #30363d;
+    --primary-color: #58a6ff;
+    --primary-hover: cornflowerblue;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* Smooth theme transition */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+    transition:
+        background-color 0.25s ease,
+        border-color 0.25s ease,
+        color 0.25s ease,
+        box-shadow 0.25s ease !important;
+}
+
+img,
+svg,
+button,
+ul,
+li,
+.non-select {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+a,
+a:link,
+a:visited,
+a:focus,
+a:hover,
+a:active {
+    text-decoration: none;
+}
+
+html,
+body {
+    background-color: var(--background);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body,
+#root {
+    min-height: 100%;
+}
+
+.add-table-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10040;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(10, 15, 25, 0.62);
+    backdrop-filter: blur(4px);
+}
+
+.add-table-dialog {
+    width: min(720px, 100%);
+    max-height: calc(100vh - 40px);
+    overflow: auto;
+    border: 1px solid var(--dialog-bdr);
+    border-radius: 14px;
+    background: var(--dialog-bg);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.add-table-dialog > header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--dialog-bdr);
+    background: var(--dialog-bg);
+}
+
+.add-table-dialog > header h2 { margin: 0; font-size: 18px; }
+.add-table-dialog > header button { border: 0; background: transparent; color: inherit; font-size: 28px; cursor: pointer; }
+.add-table-dialog .add-table-form-container { padding: 4px 18px 18px; }
+
+#root {
+    background-color: var(--background);
+}
+
+/* Keep lazy route transitions on the resolved theme instead of the browser default. */
+.page-loader {
+    display: flex;
+    width: 100%;
+    min-height: 100dvh;
+    align-items: center;
+    justify-content: center;
+    color: var(--foreground);
+    background: var(--background);
+    animation: pageLoaderReveal 0.18s ease-out both;
+}
+
+.page-loader-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+    border-top-color: var(--theme-color);
+    border-radius: 50%;
+    animation: pageLoaderSpin 0.72s linear infinite;
+}
+
+@keyframes pageLoaderReveal {
+    from { opacity: 0.35; }
+    to { opacity: 1; }
+}
+
+@keyframes pageLoaderSpin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-loader { animation: none; }
+    .page-loader-spinner { animation-duration: 1.4s; }
+}
+
+input,
+button,
+select,
+textarea {
+    font: inherit;
+}
+
+.button {
+    cursor: pointer;
+}
+.button-default {
+    background-color: rgb(248, 248, 248);
+    border: 1px solid rgba(204, 204, 204, 0.5);
+    color: #5d5d5d;
+}
+.button-danger {
+    background-color: #f44336;
+    border: 1px solid #d32f2f;
+    color: #f5f5f5;
+}
+.link {
+    padding: 5px 10px;
+    cursor: pointer;
+}
+.snippet {
+    width: auto;
+    display: flex;
+    justify-content: center;
+    justify-items: center;
+}
+.dot-flashing {
+    position: relative;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: #515151;
+    color: #515151;
+    animation: dotFlashing 1s infinite linear alternate;
+    animation-delay: 0.5s;
+}
+.dot-flashing::before,
+.dot-flashing::after {
+    content: '';
+    display: inline-block;
+    position: absolute;
+    top: 0;
+}
+.dot-flashing::before {
+    left: -15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: #515151;
+    color: #515151;
+    animation: dotFlashing 1s infinite alternate;
+    animation-delay: 0s;
+}
+.dot-flashing::after {
+    left: 15px;
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    background-color: #515151;
+    color: #515151;
+    animation: dotFlashing 1s infinite alternate;
+    animation-delay: 1s;
+}
+@keyframes dotFlashing {
+    0% {
+        background-color: #515151;
+    }
+    50%,
+    100% {
+        background-color: #cacaca;
+    }
+}

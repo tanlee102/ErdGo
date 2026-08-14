@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+tests/
+test-results/
+playwright-report/
+.vitest/
+.vscode/
+.idea/
+.DS_Store
+*.local
+*.log
+.env
+.env.*
+!.env.example
+npm-debug.log*

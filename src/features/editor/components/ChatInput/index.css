@@ -1,0 +1,273 @@
+.ai-prompt-input {
+    background: var(--background);
+    border-top: 0.5px solid var(--file-name-input-bdr);
+    padding: 5px;
+    margin: 0px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    container-type: inline-size;
+}
+
+.ai-prompt-input__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 5px;
+}
+
+.ai-prompt-input__btn {
+    padding: 4px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 3px;
+    border: none;
+    font-weight: 500;
+}
+
+.ai-prompt-input__btn.accept {
+    background: #16a34a;
+    color: #fff;
+}
+
+.ai-prompt-input__btn.accept:hover {
+    background: #15803d;
+}
+
+.ai-prompt-input__btn.reject {
+    background: var(--error-bg);
+    color: #fff;
+}
+
+.ai-prompt-input__btn.reject:hover {
+    background: #b91c1c;
+}
+
+.ai-prompt-input__field {
+    background: var(--sql-file-name-input-bg);
+    color: var(--action-color);
+    border-radius: 3px;
+    min-height: 37px;
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-size: 14px;
+    line-height: 1.5;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+}
+
+.ai-prompt-input__field:focus {
+    border-color: var(--focus-outline);
+}
+
+.ai-prompt-input__field--empty:before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    pointer-events: none;
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    right: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ai-prompt-input__field--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    user-select: none;
+    pointer-events: none;
+}
+
+.ai-prompt-input__error {
+    padding: 6px 8px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--error-bg) 10%, transparent);
+    color: var(--error-bg);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.ai-prompt-input__bottom {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+}
+
+.ai-prompt-input__model-container {
+    flex: 1 1 140px;
+    min-width: 0;
+    overflow: hidden;
+    text-align: right;
+}
+
+.ai-prompt-input__model {
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    padding: 4px 6px;
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    transition: color 0.15s;
+    text-align: right;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.ai-prompt-input__model:hover {
+    color: var(--action-color);
+}
+
+.ai-prompt-input__btn.send {
+    background: var(--focus-outline);
+    color: #fff;
+    padding: 6px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    transition: background 0.15s;
+    flex: 0 0 28px;
+}
+
+.ai-prompt-input__btn.send:hover {
+    background: #1d4ed8;
+}
+
+.ai-prompt-input__send-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-prompt-input__send-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+.ai-prompt-input__spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: ai-spinner 0.6s linear infinite;
+}
+
+@keyframes ai-spinner {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ai-prompt-input__explanation {
+    background: var(--sql-file-name-input-bg);
+    border-radius: 3px;
+    padding: 10px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ai-prompt-input__explanation-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--focus-outline);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ai-prompt-input__explanation-text {
+    font-size: 13px;
+    color: var(--action-color);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+    line-height: normal;
+}
+
+/* API Key Button */
+.ai-prompt-input__api-key-btn {
+    background: transparent;
+    border: none;
+    width: 30px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    color: var(--muted);
+    flex: 0 0 30px;
+}
+
+.ai-prompt-input__api-key-btn:hover {
+    background: var(--sql-file-name-input-bg);
+    color: var(--action-color);
+}
+.ai-prompt-input__api-key-btn--active {
+    color: #16a34a;
+}
+.ai-prompt-input__api-key-btn--active:hover {
+    color: #15803d;
+}
+
+/* SQL Guide Link */
+.ai-prompt-input__sql-guide-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--muted);
+    text-decoration: none;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.ai-prompt-input__sql-guide-btn:hover {
+    background: var(--sql-file-name-input-bg);
+    color: var(--action-color);
+}
+
+/* Keep the primary controls reachable inside a narrow editor sidebar. */
+@container (max-width: 360px) {
+    .ai-prompt-input__sql-guide-btn {
+        padding: 4px;
+    }
+
+    .ai-prompt-input__sql-guide-btn span {
+        display: none;
+    }
+
+    .ai-prompt-input__bottom {
+        gap: 5px;
+    }
+}
+
+@container (max-width: 260px) {
+    .ai-prompt-input__sql-guide-btn {
+        display: none;
+    }
+}

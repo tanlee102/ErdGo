@@ -1,0 +1,113 @@
+/* Accessible toast stack with severity colors, animation, and responsive positioning. */
+.app-toast-region {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(390px, calc(100vw - 32px));
+    pointer-events: none;
+}
+
+.app-toast {
+    position: relative;
+    display: grid;
+    grid-template-columns: 3px minmax(0, 1fr) auto;
+    overflow: hidden;
+    min-height: 58px;
+    background: var(--dialog-bg);
+    border: 1px solid var(--dialog-bdr);
+    border-radius: 6px;
+    box-shadow: rgba(15, 23, 42, 0.12) 0 8px 24px, rgba(15, 23, 42, 0.06) 0 1px 3px;
+    color: var(--color-text);
+    pointer-events: auto;
+    animation: app-toast-enter 180ms ease-out;
+}
+
+.app-toast__stripe {
+    background: var(--theme-color);
+}
+
+.app-toast--success .app-toast__stripe {
+    background: #16a34a;
+}
+
+.app-toast--warning .app-toast__stripe {
+    background: #d97706;
+}
+
+.app-toast--error .app-toast__stripe {
+    background: #dc2626;
+}
+
+.app-toast__content {
+    padding: 10px 10px 10px 12px;
+    min-width: 0;
+}
+
+.app-toast__title {
+    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.app-toast__message {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.app-toast__close {
+    align-self: start;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    margin: 6px 6px 0 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.app-toast__close:hover {
+    background: color-mix(in srgb, var(--button-bg) 78%, transparent);
+    color: var(--action-color);
+}
+
+@keyframes app-toast-enter {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@media (max-width: 520px) {
+    .app-toast-region {
+        top: auto;
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+        width: auto;
+    }
+
+    .app-toast {
+        min-height: 58px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-toast {
+        animation: none;
+    }
+}
