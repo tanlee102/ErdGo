@@ -11,6 +11,9 @@
 <p align="center">SQL to ERD · Data View · Query View · No account</p>
 
 <p align="center">
+  <a href="https://erdgo.com/">
+    <img src="https://img.shields.io/badge/Open-erdgo.com-2c70ed" alt="Open the ERD Go app" />
+  </a>
   <a href="https://x.com/Erd_Go">
     <img src="https://img.shields.io/badge/Follow-%40Erd__Go-000000?logo=x&amp;logoColor=white" alt="Follow ERD Go on X" />
   </a>
