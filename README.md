@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/favicon.svg" alt="ERD Go logo" width="110" height="110" />
+  <img src="public/web-app-manifest-192x192.png" alt="ERD Go logo" width="110" height="110" />
 </p>
 
 <h1 align="center">ERD Go</h1>

@@ -1,0 +1,47 @@
+{
+    "name": "ERD Go - SQL to ERD Editor",
+    "short_name": "ERD Go",
+    "description": "A local-first SQL editor that turns database schemas into interactive ER diagrams.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#667eea",
+    "orientation": "any",
+    "scope": "/",
+    "lang": "en-US",
+    "categories": ["developer tools", "productivity", "utilities"],
+    "icons": [
+        {
+            "src": "/favicon-96x96.png",
+            "sizes": "96x96",
+            "type": "image/png"
+        },
+        {
+            "src": "/web-app-manifest-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Create New ERD",
+            "short_name": "New ERD",
+            "description": "Start a new local ERD diagram",
+            "url": "/e/new",
+            "icons": [
+                {
+                    "src": "/favicon-96x96.png",
+                    "sizes": "96x96"
+                }
+            ]
+        }
+    ],
+    "related_applications": [],
+    "prefer_related_applications": false
+}
