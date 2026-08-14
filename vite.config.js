@@ -8,7 +8,7 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
     plugins: [react({ include: '**/*.{jsx,js}' })],
     resolve: { alias: { '@': path.resolve(projectRoot, './src') } },
-    server: { port: 3001 },
+    server: { port: 3000, strictPort: true },
     build: {
         outDir: 'dist',
         sourcemap: false,
