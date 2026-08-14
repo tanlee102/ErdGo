@@ -4,9 +4,9 @@
 
 <h1 align="center">ERD Go</h1>
 
-<h3 align="center">Simple, local-first SQL editor and interactive ER diagram tool.</h3>
+<h3 align="center">Free, local-first SQL-to-ERD converter and database diagram editor.</h3>
 
-<p align="center">SQL to ERD · Data View · Query View · No account</p>
+<p align="center">PostgreSQL · MySQL · SQLite · SQL Server · No account</p>
 
 <p align="center">
   <a href="https://erdgo.com/">
@@ -21,13 +21,30 @@
   <img src="docs/assets/erdgo-editor.png" alt="ERD Go SQL editor and generated entity-relationship diagram" width="1200" />
 </p>
 
-## Features
+<p align="center"><strong>If ERD Go helps you, please star the repository so more developers can discover it.</strong></p>
 
-- SQL to ERD for SQLite, PostgreSQL, MySQL, and SQL Server.
-- Interactive layouts, colors, minimap, and PNG/SVG/PDF export.
-- Data View and read-only Query View.
-- Local browser storage with no account or backend.
-- Optional Gemini editing with your own API key.
+## SQL to ERD in your browser
+
+ERD Go is a browser-based database schema visualizer. Paste or import SQL DDL and instantly generate an interactive entity-relationship diagram—without creating an account or sending your schema to an application backend.
+
+It understands common `CREATE TABLE` and `ALTER TABLE` workflows, primary and foreign keys, indexes, constraints, enums, composite types, and views across popular SQL dialects.
+
+## Highlights
+
+- Convert PostgreSQL, MySQL, SQLite, and SQL Server schemas into ER diagrams.
+- Explore relationships, arrange tables, apply colors, and navigate with a minimap.
+- Export database diagrams as PNG, SVG, or PDF.
+- Replay schema and sample-data SQL in Data View.
+- Run supported read-only `SELECT` queries in Query View.
+- Save diagrams locally in your browser and reopen them later.
+- Optionally edit SQL with Gemini using your own API key.
+
+## Common uses
+
+- Visualize an existing database schema from SQL.
+- Design and document relational database structures.
+- Review tables, keys, constraints, and relationships.
+- Create shareable ERD exports for development and documentation.
 
 ## Run locally
 

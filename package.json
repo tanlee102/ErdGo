@@ -2,7 +2,7 @@
     "name": "erdgo",
     "version": "0.1.0",
     "private": true,
-    "description": "A local-first SQL to ERD editor.",
+    "description": "A free local-first SQL-to-ERD converter and interactive database schema visualizer.",
     "license": "MIT",
     "author": "Le Quoc Tan",
     "repository": {
@@ -12,8 +12,24 @@
     "bugs": {
         "url": "https://github.com/tanlee102/ErdGo/issues"
     },
-    "homepage": "https://github.com/tanlee102/ErdGo#readme",
-    "keywords": ["erd", "sql", "database", "diagram", "schema", "local-first"],
+    "homepage": "https://erdgo.com/",
+    "keywords": [
+        "erd",
+        "sql",
+        "sql-to-erd",
+        "sql-editor",
+        "database",
+        "database-design",
+        "database-schema",
+        "schema-visualization",
+        "entity-relationship-diagram",
+        "postgresql",
+        "mysql",
+        "sqlite",
+        "sql-server",
+        "local-first",
+        "react"
+    ],
     "type": "module",
     "scripts": {
         "dev": "vite",
