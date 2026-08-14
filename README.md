@@ -4,8 +4,6 @@
 
 <h1 align="center">ERD Go</h1>
 
----
-
 <h3 align="center">Simple, local-first SQL editor and interactive ER diagram tool.</h3>
 
 <p align="center">SQL to ERD · Data View · Query View · No account</p>
