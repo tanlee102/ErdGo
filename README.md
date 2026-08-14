@@ -12,6 +12,12 @@
   <a href="https://erdgo.com/">
     <img src="https://img.shields.io/badge/Open-erdgo.com-2c70ed" alt="Open the ERD Go app" />
   </a>
+  <a href="https://github.com/tanlee102/ErdGo/stargazers">
+    <img src="https://img.shields.io/github/stars/tanlee102/ErdGo?style=flat&amp;logo=github&amp;label=Stars" alt="Star ERD Go on GitHub" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/tanlee102/ErdGo" alt="MIT License" />
+  </a>
   <a href="https://x.com/Erd_Go">
     <img src="https://img.shields.io/badge/Follow-%40Erd__Go-000000?logo=x&amp;logoColor=white" alt="Follow ERD Go on X" />
   </a>
@@ -25,7 +31,7 @@
 
 ## SQL to ERD in your browser
 
-ERD Go is a browser-based database schema visualizer. Paste or import SQL DDL and instantly generate an interactive entity-relationship diagram—without creating an account or sending your schema to an application backend.
+ERD Go is an open-source, browser-based database schema visualizer. Paste or import SQL DDL and instantly generate an interactive entity-relationship diagram—without creating an account or sending your schema to an application backend.
 
 It understands common `CREATE TABLE` and `ALTER TABLE` workflows, primary and foreign keys, indexes, constraints, enums, composite types, and views across popular SQL dialects.
 
@@ -48,16 +54,32 @@ It understands common `CREATE TABLE` and `ALTER TABLE` workflows, primary and fo
 
 ## Run locally
 
+Requires Node.js 20 or newer.
+
 ```bash
 git clone https://github.com/tanlee102/ErdGo.git
 cd ErdGo
-npm install
+npm ci
 npm run dev
 ```
+
+Open `http://localhost:3001`. Run `npm run check` before contributing.
 
 ## Privacy
 
 Diagrams stay in your browser. ERD Go has no accounts, cloud sync, sharing service, or analytics.
+
+The optional AI editor contacts Gemini only after you provide your own API key and make a request. Never use production credentials or sensitive schema data with a third-party provider.
+
+## Community
+
+Contributions are welcome. Read the [contributing guide](CONTRIBUTING.md), [architecture notes](docs/architecture.md), and [code of conduct](CODE_OF_CONDUCT.md) before opening a pull request.
+
+- [Report a bug](https://github.com/tanlee102/ErdGo/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/tanlee102/ErdGo/issues/new?template=feature_request.yml)
+- [Get help](SUPPORT.md)
+- [Report a vulnerability privately](SECURITY.md)
+- [View the changelog](CHANGELOG.md)
 
 ## License
 

@@ -1,11 +1,11 @@
 {
     "name": "ERD Go - SQL to ERD Editor",
     "short_name": "ERD Go",
-    "description": "A local-first SQL editor that turns database schemas into interactive ER diagrams.",
+    "description": "A free, open-source, local-first SQL editor that turns database schemas into interactive ER diagrams.",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",
-    "theme_color": "#667eea",
+    "theme_color": "#2c70ed",
     "orientation": "any",
     "scope": "/",
     "lang": "en-US",

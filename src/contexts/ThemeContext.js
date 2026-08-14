@@ -23,7 +23,7 @@ const applyThemeClass = (theme, withTransition = false) => {
     // Also update meta theme-color for mobile browsers
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (metaThemeColor) {
-        metaThemeColor.setAttribute('content', theme === 'dark' ? '#0a0a0f' : '#667eea');
+        metaThemeColor.setAttribute('content', theme === 'dark' ? '#0a0a0f' : '#2c70ed');
     }
 };
 

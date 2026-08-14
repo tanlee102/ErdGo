@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for an unpatched vulnerability. Use the repository’s GitHub Security Advisories page to submit a private report with affected versions, reproduction steps, impact, and any suggested mitigation.
+Please do not open a public issue for an unpatched vulnerability. [Submit a private vulnerability report](https://github.com/tanlee102/ErdGo/security/advisories/new) with affected versions, reproduction steps, impact, and any suggested mitigation.
 
 You should receive an acknowledgment within seven days. Maintainers will investigate, coordinate a fix and disclosure when appropriate, and credit reporters who want attribution.
 

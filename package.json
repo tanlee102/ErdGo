@@ -13,6 +13,9 @@
         "url": "https://github.com/tanlee102/ErdGo/issues"
     },
     "homepage": "https://erdgo.com/",
+    "engines": {
+        "node": ">=20.19.0"
+    },
     "keywords": [
         "erd",
         "sql",

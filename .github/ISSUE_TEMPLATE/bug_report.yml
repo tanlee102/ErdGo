@@ -1,0 +1,78 @@
+name: Bug report
+description: Report a reproducible problem in ERD Go
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve ERD Go. Use synthetic SQL only—never include credentials, private schemas, or production data.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and did not find the same problem.
+          required: true
+        - label: I reproduced the problem in the latest version at erdgo.com.
+          required: true
+        - label: This report contains no private schema data, credentials, or API keys.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - SQL parsing or import
+        - ER diagram or layout
+        - Data View
+        - Query View
+        - Local files or persistence
+        - Export
+        - AI editing
+        - Theme, accessibility, or responsive UI
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: dialect
+    attributes:
+      label: SQL dialect
+      options:
+        - PostgreSQL
+        - MySQL
+        - SQLite
+        - SQL Server
+        - Not applicable
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Explain the observed result and what you expected instead.
+      placeholder: A concise description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide numbered steps and the smallest synthetic SQL that reproduces the problem.
+      render: sql
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser version and operating system.
+      placeholder: Chrome 140 on macOS 15
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add screenshots or other non-sensitive details when helpful.

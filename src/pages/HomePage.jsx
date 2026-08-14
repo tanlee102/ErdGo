@@ -18,7 +18,7 @@ export default function HomePage() {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
 
     useEffect(() => {
-        document.title = 'ERD Go — Local-first SQL to ERD Editor';
+        document.title = 'ERD Go — Free SQL to ERD Diagram Editor';
     }, []);
 
     return (
