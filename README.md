@@ -11,6 +11,12 @@
 <p align="center">SQL to ERD · Data View · Query View · No account</p>
 
 <p align="center">
+  <a href="https://x.com/Erd_Go">
+    <img src="https://img.shields.io/badge/Follow-%40Erd__Go-000000?logo=x&amp;logoColor=white" alt="Follow ERD Go on X" />
+  </a>
+</p>
+
+<p align="center">
   <img src="docs/assets/erdgo-editor.png" alt="ERD Go SQL editor and generated entity-relationship diagram" width="1200" />
 </p>
 
