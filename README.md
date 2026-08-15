@@ -24,7 +24,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/erd-go-sql-to-erd-editor.png" alt="ERD Go SQL editor and generated entity-relationship diagram" width="1200" />
+  <img src="docs/assets/erd-go-sql-to-erd-editor-74e2489b.png" alt="ERD Go SQL editor and generated entity-relationship diagram" width="1200" />
 </p>
 
 <p align="center"><strong>If ERD Go helps you, please star the repository so more developers can discover it.</strong></p>
