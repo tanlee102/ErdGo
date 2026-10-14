@@ -1,0 +1,11 @@
+.docs-page { min-height: 100dvh; background: var(--background); color: var(--foreground); }
+.docs-main { max-width: 860px; margin: 0 auto; padding: 40px 24px 64px; }
+.docs-main h1 { font-size: 36px; letter-spacing: -.03em; }
+.docs-main p, .docs-main li { font-size: 15px; line-height: 1.8; }
+.docs-main li { margin-bottom: 12px; }
+.docs-links { display: flex; flex-wrap: wrap; gap: 12px; padding: 18px 0; }
+.docs-links a, .docs-open-tool { color: var(--theme-color); }
+.docs-links a[aria-current="page"] { font-weight: 700; text-decoration: underline; }
+.docs-main article { margin: 32px 0; padding: 24px; background: var(--panel-bg); border: 1px solid var(--border); border-radius: 12px; }
+.docs-main article h2 { margin-top: 0; }
+.docs-main .docs-note { color: var(--muted); font-size: 13px; }

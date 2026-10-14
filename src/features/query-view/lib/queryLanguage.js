@@ -4,7 +4,7 @@
  * Parser and evaluator modules must share these exact keyword/function sets.
  * Adding syntax in only one layer can make a valid token impossible to parse,
  * or allow a parsed function to fail later during evaluation. Update the
- * relevant conformance validation whenever this vocabulary changes.
+ * relevant conformance tests whenever this vocabulary changes.
  */
 export const QUERY_KEYWORDS = [
     'WITH',

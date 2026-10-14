@@ -1,27 +1,21 @@
-import { useContext } from 'react';
+import { useContext, useRef } from 'react';
+import { Outlet } from 'react-router-dom';
 import RootLayoutProvider, { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
 import { NavigationGuardProvider } from '@/components/NavigationGuard';
 import { NotificationProvider } from '@/components/Notifications';
 import { AddTable } from '@/components/AddTable';
 import LocalFileDialog from '@/features/files/components/LocalFileDialog';
-import EditorPage from '@/pages/EditorPage';
+import Modal from '@/components/Modal';
 
 function EditorOverlays() {
     const { displayModalAddTable, setDisplayModalAddTable } = useContext(RootLayoutContext);
+    const closeAddTableRef = useRef(null);
 
     return (
         <>
             {displayModalAddTable && (
-                <div className="add-table-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDisplayModalAddTable(false)}>
-                    <section className="add-table-dialog" role="dialog" aria-modal="true" aria-label="Add table">
-                        <header>
-                            <h2>Add table</h2>
-                            <button type="button" onClick={() => setDisplayModalAddTable(false)} aria-label="Close add table">×</button>
-                        </header>
-                        <AddTable />
-                    </section>
-                </div>
+                <Modal className="table-form-modal" title="Add Table" displayModal={displayModalAddTable} setDisplayModal={setDisplayModalAddTable} onRequestClose={() => closeAddTableRef.current?.()} body={<AddTable closeRequestRef={closeAddTableRef} />} />
             )}
             <LocalFileDialog />
         </>
@@ -34,7 +28,7 @@ export default function EditorWorkspace() {
             <ConfirmProvider>
                 <NavigationGuardProvider>
                     <RootLayoutProvider>
-                        <EditorPage />
+                        <Outlet />
                         <EditorOverlays />
                     </RootLayoutProvider>
                 </NavigationGuardProvider>

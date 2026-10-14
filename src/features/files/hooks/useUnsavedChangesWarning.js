@@ -88,7 +88,7 @@ export function useUnsavedChangesWarning(hasUnsavedChanges, canPersist = true) {
             }
 
             // Restore the current URL while the app-level confirm dialog is open.
-            window.history.pushState(null, '', location.pathname + location.search);
+            window.history.pushState(window.history.state, '', location.pathname + location.search);
 
             confirmNavigation().then((confirmed) => {
                 if (!confirmed) return;
@@ -97,8 +97,9 @@ export function useUnsavedChangesWarning(hasUnsavedChanges, canPersist = true) {
             });
         };
 
-        // Add a same-route history entry so the first Back action can be confirmed.
-        window.history.pushState(null, '', location.pathname + location.search);
+        // Preserve React Router's envelope and any route-scoped SQL handoff when
+        // adding the same-route entry used to confirm the first Back action.
+        window.history.pushState(window.history.state, '', location.pathname + location.search);
         window.addEventListener('popstate', handlePopState);
 
         return () => {

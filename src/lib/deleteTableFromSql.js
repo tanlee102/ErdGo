@@ -1,5 +1,6 @@
 import { parseAST } from './parse-ast/parseAst.js';
 import {
+    DEFAULT_SCHEMA_NAME,
     buildIdentifierDisplayContext,
     effectiveIdentifierParts,
     identifierKey,
@@ -36,13 +37,27 @@ function collectAstIdentifierParts(ast) {
     return groups.filter((parts) => parts.length > 0);
 }
 
-function createTableNameMatcher(ast, tableName) {
-    const normalizedTargetName = String(tableName || '').trim().toLowerCase();
-    const targetParts = identifierPartsFrom(tableName);
-    const tableDisplayContext = buildIdentifierDisplayContext(ast?.tables || [], { schemaAware: true });
+function createTableNameMatcher(ast, tableName, targetIdentifier = tableName) {
+    const dialect = ast?.dialect || 'auto';
+    const hasConfiguredDefaultSchema = ast?.parseOptions && Object.prototype.hasOwnProperty.call(ast.parseOptions, 'defaultSchema');
+    const defaultSchema = hasConfiguredDefaultSchema
+        ? ast.parseOptions.defaultSchema
+        : ast?.dialectProfile?.defaultSchema ?? (dialect === 'auto' ? DEFAULT_SCHEMA_NAME : null);
+    const identityDefaultSchema = defaultSchema || DEFAULT_SCHEMA_NAME;
+    const targetName = String(tableName || '').trim();
+    // Renderer display names omit quoting when the spelling is otherwise
+    // unambiguous. Multi-tab deletion can provide the owning CREATE's raw
+    // identifier so PostgreSQL `users` and `"Users"` remain distinct.
+    const targetParts = identifierPartsFrom(targetIdentifier);
+    const tableDisplayContext = buildIdentifierDisplayContext(ast?.tables || [], {
+        schemaAware: true,
+        defaultSchema: identityDefaultSchema,
+        dialect,
+    });
     const displayedTargetTables = (ast?.tables || []).filter((table) => {
         const meta = tableDisplayContext.get(table);
-        return String(meta?.displayName || '').toLowerCase() === normalizedTargetName;
+        const displayName = String(meta?.displayName || '');
+        return dialect === 'postgres' ? displayName === targetName : displayName.toLowerCase() === targetName.toLowerCase();
     });
     const targetTableSet = new Set(displayedTargetTables);
     const targetIdentityParts = displayedTargetTables.length > 0
@@ -50,27 +65,27 @@ function createTableNameMatcher(ast, tableName) {
         : [targetParts];
     const tableLeafCounts = new Map();
     (ast?.tables || []).forEach((table) => {
-        const leafKey = identifierLeafKey(identifierPartsFrom(table));
+        const leafKey = identifierLeafKey(identifierPartsFrom(table), dialect);
         tableLeafCounts.set(leafKey, (tableLeafCounts.get(leafKey) || 0) + 1);
     });
 
     const leafToFullKeys = new Map();
     collectAstIdentifierParts(ast).forEach((parts) => {
-        const leafKey = identifierLeafKey(parts);
+        const leafKey = identifierLeafKey(parts, dialect);
         if (!leafKey) return;
         if (!leafToFullKeys.has(leafKey)) leafToFullKeys.set(leafKey, new Set());
-        leafToFullKeys.get(leafKey).add(identifierKey(effectiveIdentifierParts(parts)));
+        leafToFullKeys.get(leafKey).add(identifierKey(effectiveIdentifierParts(parts, identityDefaultSchema), dialect));
     });
 
     function matchesIdentityParts(candidateParts) {
         if (!candidateParts || candidateParts.length === 0) return false;
 
-        if (targetIdentityParts.some((parts) => identifierPartsEquivalent(candidateParts, parts))) {
+        if (targetIdentityParts.some((parts) => identifierPartsEquivalent(candidateParts, parts, identityDefaultSchema, dialect))) {
             return true;
         }
 
-        const candidateLeafKey = identifierLeafKey(candidateParts);
-        const matchesTargetLeaf = candidateLeafKey && candidateLeafKey === identifierLeafKey(targetParts);
+        const candidateLeafKey = identifierLeafKey(candidateParts, dialect);
+        const matchesTargetLeaf = candidateLeafKey && candidateLeafKey === identifierLeafKey(targetParts, dialect);
         if (!matchesTargetLeaf) return false;
 
         // If a local table resolved from the display name is the only table
@@ -87,6 +102,8 @@ function createTableNameMatcher(ast, tableName) {
     }
 
     return {
+        dialect,
+        defaultSchema: identityDefaultSchema,
         matchesTable(table) {
             if (targetTableSet.has(table)) return true;
             return matchesIdentityParts(identifierPartsFrom(table));
@@ -97,7 +114,7 @@ function createTableNameMatcher(ast, tableName) {
     };
 }
 
-function createColumnRemovalTracker() {
+function createColumnRemovalTracker(dialect = 'auto', defaultSchema = DEFAULT_SCHEMA_NAME) {
     const entries = [];
 
     return {
@@ -105,17 +122,17 @@ function createColumnRemovalTracker() {
             if (!table || !Array.isArray(columnsToRemove) || columnsToRemove.length === 0) return;
             entries.push({
                 parts: identifierPartsFrom(table),
-                leafKey: identifierLeafKey(identifierPartsFrom(table)),
+                leafKey: identifierLeafKey(identifierPartsFrom(table), dialect),
                 columns: columnsToRemove,
             });
         },
         get(tableName, tableParts = null) {
             const candidateParts = identifierPartsFrom(tableName, tableParts);
-            const exact = entries.find((entry) => identifierPartsEquivalent(candidateParts, entry.parts));
+            const exact = entries.find((entry) => identifierPartsEquivalent(candidateParts, entry.parts, defaultSchema, dialect));
             if (exact) return exact.columns;
             if (candidateParts.length !== 1) return null;
 
-            const candidateLeafKey = identifierLeafKey(candidateParts);
+            const candidateLeafKey = identifierLeafKey(candidateParts, dialect);
             const leafMatches = entries.filter((entry) => entry.leafKey === candidateLeafKey);
             return leafMatches.length === 1 ? leafMatches[0].columns : null;
         },
@@ -156,16 +173,30 @@ function referenceSqlName(reference) {
  * foreign-key references when the target table belongs to another SQL tab.
  * @param {boolean} options.preserveReferencingColumns - Remove foreign-key
  * constraints without dropping the dependent columns or tables.
+ * @param {'auto'|'sqlite'|'postgres'|'mysql'|'mssql'} [options.dialect] -
+ * Identifier rules shared by a multi-tab workspace.
+ * @param {string|null} [options.defaultSchema] - Optional identifier namespace.
+ * @param {string} [options.targetIdentifier] - Raw owning CREATE identifier,
+ * used to preserve quoted PostgreSQL identity across SQL tabs.
  * @returns {string} - SQL with table and references removed
  */
-export function deleteTableFromSql(sql, tableName, { removeReferencesWhenTargetMissing = false, preserveReferencingColumns = false } = {}) {
+export function deleteTableFromSql(sql, tableName, {
+    removeReferencesWhenTargetMissing = false,
+    preserveReferencingColumns = false,
+    dialect = null,
+    defaultSchema,
+    targetIdentifier = tableName,
+} = {}) {
     if (typeof sql !== 'string' || !sql.trim()) return sql;
     if (!tableName || typeof tableName !== 'string') return sql;
 
     try {
         // Parse the SQL to get AST with position information
-        const { ast, errors } = parseAST(sql);
-        const tableNameMatcher = createTableNameMatcher(ast, tableName);
+        const { ast, errors } = parseAST(sql, {
+            ...(dialect && { dialect }),
+            ...(defaultSchema !== undefined && { defaultSchema }),
+        });
+        const tableNameMatcher = createTableNameMatcher(ast, tableName, targetIdentifier);
 
         if (errors && errors.length > 0) {
             const expectedCrossTabReferenceWarnings = removeReferencesWhenTargetMissing ? errors.filter((error) => warningReferencesMatchedTable(error, tableNameMatcher)) : [];
@@ -199,7 +230,7 @@ export function deleteTableFromSql(sql, tableName, { removeReferencesWhenTargetM
         }
 
         // Create a map to track which columns will be removed from each table
-        const tableColumnRemovalMap = createColumnRemovalTracker();
+        const tableColumnRemovalMap = createColumnRemovalTracker(tableNameMatcher.dialect, tableNameMatcher.defaultSchema);
 
         // 2. Find ALTER statements that reference this table directly
         ast.alters.forEach((alter) => {
@@ -530,14 +561,17 @@ function cleanupSql(sql) {
  * @param {string} tableName - Name of the table to delete
  * @returns {object} - Information about what would be deleted
  */
-export function getTableDeletionInfo(sql, tableName) {
+export function getTableDeletionInfo(sql, tableName, options = {}) {
     if (typeof sql !== 'string' || !sql.trim()) return { items: [] };
     if (!tableName || typeof tableName !== 'string') return { items: [] };
 
     try {
-        const { ast, errors } = parseAST(sql);
+        const { ast, errors } = parseAST(sql, {
+            ...(options.dialect && { dialect: options.dialect }),
+            ...(options.defaultSchema !== undefined && { defaultSchema: options.defaultSchema }),
+        });
         const items = [];
-        const tableNameMatcher = createTableNameMatcher(ast, tableName);
+        const tableNameMatcher = createTableNameMatcher(ast, tableName, options.targetIdentifier || tableName);
 
         // Main table
         const targetTable = ast.tables.find((table) => tableNameMatcher.matchesTable(table));

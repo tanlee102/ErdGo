@@ -32,6 +32,16 @@
  *                                  — invoked when the user clicks the "jump"
  *                                    icon; parent typically scrolls the SQL
  *                                    editor to the corresponding CREATE TABLE
+ *      onRelationshipReconnect: (relation, endpoint, target, { preview })
+ *                                  => { ok, unchanged?, message }
+ *                                  — validates field drops synchronously;
+ *                                    React commits SQL only on release/apply
+ *      onRelationshipReconnectTargets: (relation, endpoint)
+ *                                  => Promise<{ ok, targets, message }>
+ *                                  — supplies fully validated popup choices
+ *      onCanvasSchemaEdit: (action, options) => { ok, message } | Promise
+ *                                  — direct field/connection SQL edits;
+ *                                    parent confirms deletions and owns Undo
  *      tableOwners:     { [tableName]: { title, line, ... } }
  *                                  — SQL-tab ownership used in the table
  *                                    navigator and, when enabled, labels.
@@ -147,6 +157,8 @@ function drawRoundRect(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
+import { getErdExportBounds } from './erd-renderer/exportGeometry.js';
+
 // Color palette for tables
 import {
     getCanvasColorCss,
@@ -238,13 +250,11 @@ export {
     normalizeConnectorSide,
 } from './erd-renderer/connectorRouting.js';
 export { normalizeConnectorEndpointSides } from './erd-renderer/connectorRouting.js';
-import ELK from 'elkjs/lib/elk.bundled.js';
+import { layoutGraph } from './elkLayout.js';
 import ContextManager from './ContextManager.js';
 import { calculateErdMinimapModel, erdMinimapPointToWorld, getErdMinimapPanUpdate, getErdViewportWorldRect } from './erdMinimap.js';
 import { calculateErdPinchUpdate, calculateErdViewportFit, clampErdZoom, getAnchoredZoomUpdate } from './erdViewport.js';
 import { generateSmartTableColors, getRecommendedTableColorMode, getTableHeaderContrastTreatment } from './smartTableColors.js';
-
-const elk = new ELK();
 
 import {
     CONSTRAINT_PILL_FONT,
@@ -257,6 +267,10 @@ import {
     getTableHeaderTextColorForMode,
     measureConstraintPillText,
 } from './erd-renderer/constraintPills.js';
+import { createCanvasSchemaControls } from './erd-renderer/canvasSchemaControls.js';
+import { countColumnConnectorSides, getColumnLabelSides } from './erd-renderer/columnActionPlacement.js';
+import './erd-renderer/canvasSchemaControls.css';
+import { findConnectorDropField } from './erd-renderer/endpointReconnect.js';
 
 export {
     composeCanvasAlpha,
@@ -269,7 +283,7 @@ export {
     measureConstraintPillText,
 } from './erd-renderer/constraintPills.js';
 
-export default async function runErdScript(schema, { darkMode = false, fullConnect = false, inferredRelations = [], onTableDelete = null, onJumpToTable = null, onContextChange = null, tableOwners = {}, showTableOwnerLabels = false, headerActionsAlwaysVisible = true, initialContext = null, maxFitZoom = 2.0, autoColor = false } = {}) {
+export default async function runErdScript(schema, { darkMode = false, fullConnect = false, inferredRelations = [], onTableDelete = null, onCanvasSchemaEdit = null, getCanvasColumnOptions = null, sqlDialect = 'auto', onJumpToTable = null, onRelationshipReconnect = null, onRelationshipReconnectTargets = null, onContextChange = null, tableOwners = {}, showTableOwnerLabels = false, headerActionsAlwaysVisible = true, initialContext = null, maxFitZoom = 2.0, autoColor = false } = {}) {
     // Normalize schema to prevent null access crashes
     if (!schema) schema = { enums: [], composites: [], tables: [], relations: [] };
     if (!Array.isArray(schema.tables)) schema.tables = [];
@@ -323,7 +337,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     let hoveredConnectorIdx = null; // index of the hovered connector
     let hoveredConnectorPoint = null; // world point where connector hover began
     let selectedConnectorKey = null; // connector kept active by click/tap
-    let draggingConnectorEndpoint = null; // direct left/right endpoint edit gesture
+    let draggingConnectorEndpoint = null; // preview a field/side edit; commit only on release
     let connectorTooltipCache = null; // cached measurements for the active connector inspector
     let hoveredConnectorIdxList = []; // list of connectors related to the hovered row
     let hoveredHeaderTableName = null;
@@ -488,7 +502,6 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             layoutModeLabel.textContent = getLayoutModeLabel(currentLayoutMode);
         }
         const layoutTitle = getLayoutModeTitle(currentLayoutMode);
-        layoutModeBtn.title = `Layout Mode: ${layoutTitle}`;
         layoutModeBtn.setAttribute('aria-label', `Layout Mode: ${layoutTitle}`);
     }
 
@@ -876,6 +889,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     function resetColorPopupPosition() {
         if (!colorPopup) return;
         colorPopup.classList.remove('color-popup--canvas-anchor');
+        colorPopup.classList.remove('color-popup--stacked');
         colorPopup.removeAttribute('data-placement');
         colorPopup.style.removeProperty('position');
         colorPopup.style.removeProperty('left');
@@ -896,58 +910,53 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         };
     }
 
-    function positionColorPopupAtViewportPoint(anchor) {
-        if (!colorPopup || !anchor) return;
-        const margin = 8;
-        const gap = 12;
-        const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
-        const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    function positionColorPopupAtTrigger(triggerRect, preferredPlacement = 'left') {
+        if (!colorPopup || !triggerRect) return;
         const panelRect = colorBtn?.closest('.erd-panel')?.getBoundingClientRect();
         const bounds = panelRect && panelRect.width > 0 && panelRect.height > 0
-            ? {
-                left: Math.max(margin, panelRect.left + margin),
-                right: Math.min(viewportWidth - margin, panelRect.right - margin),
-                top: Math.max(margin, panelRect.top + margin),
-                bottom: Math.min(viewportHeight - margin, panelRect.bottom - margin),
-            }
-            : { left: margin, right: viewportWidth - margin, top: margin, bottom: viewportHeight - margin };
-
-        colorPopup.style.setProperty('--color-popup-max-content-height', `${Math.max(72, bounds.bottom - bounds.top - 22)}px`);
-        const popupRect = colorPopup.getBoundingClientRect();
-
-        let placement = 'right';
-        let left = anchor.x + gap;
-        if (left + popupRect.width > bounds.right) {
-            placement = 'left';
-            left = anchor.x - popupRect.width - gap;
-        }
-
-        left = Math.max(bounds.left, Math.min(left, bounds.right - popupRect.width));
-        let top = anchor.y - popupRect.height / 2;
-        top = Math.max(bounds.top, Math.min(top, bounds.bottom - popupRect.height));
-
-        const arrowTop = Math.max(14, Math.min(anchor.y - top, popupRect.height - 14));
+            ? panelRect
+            : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+        const margin = 8;
+        colorPopup.style.setProperty(
+            '--color-popup-max-content-height',
+            `${Math.max(72, bounds.bottom - bounds.top - margin * 2 - 22)}px`,
+        );
+        const position = getToolbarPopupPosition({
+            triggerRect,
+            popupRect: { width: colorPopup.offsetWidth, height: colorPopup.offsetHeight },
+            bounds,
+            margin,
+            preferredPlacement,
+        });
 
         colorPopup.classList.add('color-popup--canvas-anchor');
-        colorPopup.dataset.placement = placement;
+        colorPopup.classList.toggle('color-popup--stacked', position.placement === 'stacked');
+        colorPopup.dataset.placement = position.placement;
         colorPopup.style.position = 'fixed';
-        colorPopup.style.left = `${Math.round(left)}px`;
-        colorPopup.style.top = `${Math.round(top)}px`;
+        colorPopup.style.left = `${Math.round(position.left)}px`;
+        colorPopup.style.top = `${Math.round(position.top)}px`;
         colorPopup.style.right = 'auto';
         colorPopup.style.bottom = 'auto';
         colorPopup.style.transform = 'none';
-        colorPopup.style.setProperty('--color-popup-arrow-top', `${Math.round(arrowTop)}px`);
+        colorPopup.style.setProperty('--color-popup-arrow-top', `${Math.round(position.arrowTop)}px`);
     }
 
     function positionColorPopupAtTable(icon) {
         if (!icon) return;
-        positionColorPopupAtViewportPoint(worldToViewportCssPoint(icon.x, icon.y));
+        const point = worldToViewportCssPoint(icon.x, icon.y);
+        const iconSize = icon.size * contextManager.zoom / (window.devicePixelRatio || 1);
+        const halfSize = iconSize / 2;
+        positionColorPopupAtTrigger({
+            left: point.x - halfSize,
+            right: point.x + halfSize,
+            top: point.y - halfSize,
+            bottom: point.y + halfSize,
+        }, 'right');
     }
 
     function positionColorPopupAtButton() {
         if (!colorBtn) return;
-        const rect = colorBtn.getBoundingClientRect();
-        positionColorPopupAtViewportPoint({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+        positionColorPopupAtTrigger(colorBtn.getBoundingClientRect());
     }
 
     // Show color picker popup for a target table. Toolbar calls use the
@@ -1268,6 +1277,19 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             tbl.height = Number(NODE_H + colCount * ROW_H);
         });
 
+        // Saved coordinates already win over every computed position below.
+        // If all tables have them, restore directly rather than waiting for a
+        // layout whose entire result would be discarded. Explicit arrangement
+        // resets positions first; new tables still take the normal layout path.
+        const savedPositions = schema.tables.map(tbl => contextManager.getTablePosition(tbl.name));
+        if (savedPositions.every(Boolean)) {
+            schema.tables.forEach((tbl, index) => {
+                tbl.x = savedPositions[index].x;
+                tbl.y = savedPositions[index].y;
+            });
+            return;
+        }
+
         // 2. Prepare valid nodes and edges. Drop relations missing either
         //    side (parser/upstream might have produced `{ from: null }` on
         //    a malformed FK). Without this guard, the `nodeIds.has(...)`
@@ -1326,7 +1348,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
                     edges,
                 };
 
-                const g = await elk.layout(elkGraph);
+                const g = await layoutGraph(elkGraph);
                 computedPositions = {};
                 (g.children || []).forEach((node) => {
                     computedPositions[node.id] = {
@@ -1370,7 +1392,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     // Clone the canvas node to clear all previous event listeners on each
     // script run. Bail out gracefully if the host page never mounted the
     // `#erd-canvas` element (e.g. component unmount races, SSR pre-paint,
-        // headless callers invoking runErdScript without a DOM) — silently returning is
+    // tests calling runErdScript without a DOM) — silently returning is
     // safer than throwing inside an async render that the caller can't
     // catch easily.
     const oldCanvas = document.getElementById('erd-canvas');
@@ -1380,6 +1402,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     const newCanvas = oldCanvas.cloneNode(true);
     oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
     const canvas = newCanvas;
+    canvas.tabIndex = 0;
     const ctx = canvas.getContext('2d'); // get canvas context
     const baseCanvas = canvas;
     const baseCtx = ctx;
@@ -1403,6 +1426,106 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     connectorSidePopup.setAttribute('role', 'dialog');
     connectorSidePopup.setAttribute('aria-label', 'Connector endpoint sides');
     connectorPopupHost?.appendChild(connectorSidePopup);
+    connectorPopupHost?.querySelectorAll('[data-erd-reconnect-status]').forEach((element) => element.remove());
+    const reconnectStatus = document.createElement('div');
+    reconnectStatus.className = 'erd-reconnect-status';
+    reconnectStatus.dataset.erdReconnectStatus = 'true';
+    reconnectStatus.setAttribute('role', 'status');
+    reconnectStatus.setAttribute('aria-live', 'polite');
+    connectorPopupHost?.appendChild(reconnectStatus);
+
+    // Keep this action in the native DOM for keyboard and touch access. It is
+    // selection-only and never contributes to layout, minimap or image export.
+    let columnSideCountsCache;
+    const canvasSchemaControls = createCanvasSchemaControls({
+        canvas, getSelectedTable: () => selectedNode, getTables: () => schema.tables,
+        getColumns: getVisibleColumns,
+        getCamera: () => { const dpr = window.devicePixelRatio || 1; return { zoom: contextManager.zoom / dpr, offsetX: contextManager.offsetX / dpr, offsetY: contextManager.offsetY / dpr }; },
+        hitField: (clientX, clientY) => {
+            const rect = canvas.getBoundingClientRect();
+            if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return null;
+            const { x, y } = screenToWorld(clientX, clientY);
+            return findConnectorDropField(schema.tables, x, y, { getColumns: getVisibleColumns });
+        },
+        onEdit: onCanvasSchemaEdit, dialect: sqlDialect,
+        getColumnOptions: getCanvasColumnOptions || ((table) => schema.tables.find((model) => model.name === table.name)?.options || {}),
+        getConnectorSideCounts: (tableName) => {
+            // Routed paths include Auto/manual sides and dragged geometry.
+            // Count once per path snapshot, rather than once for every column.
+            if (columnSideCountsCache?.paths !== connectorPaths || columnSideCountsCache.tableName !== tableName) {
+                columnSideCountsCache = { paths: connectorPaths, tableName, counts: countColumnConnectorSides(connectorPaths, tableName) };
+            }
+            return columnSideCountsCache.counts;
+        },
+        // Note boxes always open to the right. Reserve their space before
+        // connection counts, including a hovered box spanning later rows.
+        getColumnLabelSides: (table) => getColumnLabelSides(getVisibleColumns(table), enumMap, compositeMap, hoveredRow.table === table.name ? hoveredRow.rowIdx : -1),
+        appearance: { background: theme.nodeFill, text: theme.text },
+        hasExistingEndpoint: (clientX, clientY) => { const { x, y } = screenToWorld(clientX, clientY); return Boolean(getConnectorEndpointHit(x, y, { includeAll: true })); },
+        onSelectTable: (node) => {
+            hideConnectorSidePopup(); hideHeaderActionPopups();
+            selectedNode = node; contextManager.setSelectedNode(node.name);
+            updateButtonsVisibility(); requestRedraw();
+        },
+    });
+
+    function validateReconnect(connector, endpoint, target, preview = true) {
+        const current = connector?.relation?.[endpoint];
+        if (current?.table === target?.table && current?.column === target?.column) return { ok: true, unchanged: true, message: 'Keep this field; drag across the table to change its side.' };
+        if (!onRelationshipReconnect || connector?.relation?.inferred) return { ok: false, message: 'Only SQL foreign keys can be reconnected.' };
+        return onRelationshipReconnect(connector.relation, endpoint, target, { preview });
+    }
+
+    function updateEndpointDrag(clientX, clientY) {
+        const drag = draggingConnectorEndpoint;
+        const connector = connectorPaths[drag?.connectorIndex];
+        if (!drag || !connector) return;
+        const bounds = canvas.getBoundingClientRect();
+        if (clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) {
+            finishEndpointDrag(true);
+            return;
+        }
+        const { x, y } = screenToWorld(clientX, clientY);
+        drag.didMove ||= Math.hypot(clientX - drag.startClientX, clientY - drag.startClientY) >= 4;
+        drag.point = { x, y };
+        const target = findConnectorDropField(schema.tables, x, y, { getColumns: getVisibleColumns, edgeMargin: 10 / contextManager.zoom });
+        const key = target ? `${target.table}\u0000${target.column}` : '';
+        if (key !== drag.targetKey) {
+            drag.targetKey = key;
+            drag.target = target;
+            drag.validation = target ? validateReconnect(connector, drag.endpoint, target) : null;
+        }
+        reconnectStatus.hidden = !drag.didMove;
+        reconnectStatus.dataset.valid = drag.validation?.ok ? 'true' : 'false';
+        reconnectStatus.textContent = drag.validation?.message || 'Drop on a matching field. Esc cancels.';
+        canvas.style.cursor = target && !drag.validation?.ok ? 'not-allowed' : 'grabbing';
+        hoveredConnectorIdx = drag.connectorIndex;
+        hoveredConnectorPoint = null;
+        connectorTooltipCache = null;
+        requestRedraw();
+    }
+
+    function finishEndpointDrag(cancelled = false) {
+        const drag = draggingConnectorEndpoint;
+        if (!drag) return;
+        const connector = connectorPaths[drag.connectorIndex];
+        draggingConnectorEndpoint = null;
+        reconnectStatus.hidden = true;
+        if (!cancelled && connector) {
+            const details = getConnectorEndpointDetails(connector, drag.endpoint);
+            if (drag.didMove && drag.target && !drag.validation?.unchanged) {
+                validateReconnect(connector, drag.endpoint, drag.target, false);
+            } else if (!drag.didMove || (details && drag.point && drag.point.x >= details.table.x - details.table.width / 2 - 16 / contextManager.zoom && drag.point.x <= details.table.x + details.table.width / 2 + 16 / contextManager.zoom && drag.point.y >= details.table.y - details.table.height / 2 && drag.point.y <= details.table.y + details.table.height / 2)) {
+                const currentSide = details?.side || 'right';
+                const nextSide = drag.didMove ? chooseConnectorSideFromPointer(drag.point.x, details.table.x, currentSide, 12 / contextManager.zoom) : currentSide === 'left' ? 'right' : 'left';
+                contextManager.setConnectorEndpointSide(connector.relationKey, drag.endpoint, nextSide);
+                refreshConnectorSidePopup(connector);
+            }
+        }
+        canvas.style.cursor = 'default';
+        connectorTooltipCache = null;
+        requestRedraw();
+    }
 
     function getConnectorByKey(relationKey) {
         if (!relationKey) return null;
@@ -1425,12 +1548,15 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         const header = document.createElement('div');
         header.className = 'erd-connector-side-popup__header';
         const headingGroup = document.createElement('div');
+        headingGroup.className = 'erd-connector-side-popup__heading';
         const title = document.createElement('h3');
         title.className = 'erd-connector-side-popup__title';
         title.textContent = `${relation.from.table}.${relation.from.column} → ${relation.to.table}.${relation.to.column}`;
         const hint = document.createElement('p');
         hint.className = 'erd-connector-side-popup__hint';
-        hint.textContent = 'Choose a side, or drag either dot across its table.';
+        hint.textContent = onRelationshipReconnect && !relation.inferred
+            ? 'Drag a dot onto a matching field to update SQL. Choose a side here, or press Esc to cancel a drag.'
+            : 'Choose a side, or drag a dot across its table. Only SQL foreign keys can be reconnected.';
         headingGroup.append(title, hint);
         const close = document.createElement('button');
         close.type = 'button';
@@ -1481,6 +1607,105 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
 
         addEndpointRow('from', 'From / outgoing', relation.from.table, relation.from.column);
         addEndpointRow('to', 'To / incoming', relation.to.table, relation.to.column);
+        if (onRelationshipReconnect && !relation.inferred) {
+            ['from', 'to'].forEach((endpoint) => {
+                const label = document.createElement('label');
+                label.className = 'erd-connector-reconnect';
+                label.textContent = endpoint === 'from' ? 'Foreign-key field' : 'Referenced key';
+                const select = document.createElement('select');
+                select.setAttribute('aria-label', label.textContent);
+                select.disabled = true;
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = 'Checking compatible fields…';
+                placeholder.disabled = true;
+                placeholder.selected = true;
+                select.appendChild(placeholder);
+                let targets = [];
+                const message = document.createElement('span');
+                message.setAttribute('role', 'status');
+                message.textContent = 'Checking relationship rules…';
+                const apply = document.createElement('button');
+                apply.type = 'button';
+                apply.className = 'erd-connector-reconnect__apply';
+                apply.textContent = endpoint === 'from' ? 'Update foreign key' : 'Update referenced key';
+                apply.disabled = true;
+                select.onchange = () => {
+                    const target = select.value === '' ? null : targets[Number(select.value)];
+                    if (!target) return;
+                    const result = validateReconnect(connector, endpoint, target);
+                    message.textContent = result.message;
+                    apply.disabled = !result.ok || result.unchanged === true;
+                };
+                apply.onclick = () => {
+                    if (select.value !== '') validateReconnect(connector, endpoint, targets[Number(select.value)], false);
+                };
+                label.append(select, message, apply);
+                connectorSidePopup.appendChild(label);
+                Promise.resolve().then(() => onRelationshipReconnectTargets?.(relation, endpoint) || { ok: false, targets: [], message: 'The SQL editor is not ready yet.' }).then((result) => {
+                    // Closing, changing sides, switching connectors, or a SQL
+                    // rerender replaces this row. Never paint stale choices.
+                    if (!label.isConnected) return;
+                    targets = result.ok ? result.targets : [];
+                    placeholder.textContent = targets.length ? 'Choose a compatible field' : 'No compatible alternatives';
+                    const groups = new Map();
+                    targets.forEach((target, index) => {
+                        if (!groups.has(target.table)) {
+                            const group = document.createElement('optgroup');
+                            group.label = target.table;
+                            groups.set(target.table, group);
+                            select.appendChild(group);
+                        }
+                        const option = document.createElement('option');
+                        option.value = String(index);
+                        option.textContent = `${target.table}.${target.column} · ${target.type}`;
+                        groups.get(target.table).appendChild(option);
+                    });
+                    select.disabled = targets.length === 0;
+                    message.textContent = result.message;
+                }).catch(() => {
+                    if (!label.isConnected) return;
+                    placeholder.textContent = 'Choices unavailable';
+                    message.textContent = 'Unable to check these fields. Reopen the connector to try again.';
+                });
+            });
+        }
+        if (onCanvasSchemaEdit && !relation.inferred) {
+            const footer = document.createElement('div');
+            footer.className = 'erd-connector-side-popup__footer';
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'erd-connector-side-popup__delete';
+            const icon = document.createElement('span');
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = '×';
+            remove.append(icon, document.createTextNode('Delete connection'));
+            const message = document.createElement('span');
+            message.className = 'erd-connector-side-popup__delete-status';
+            message.setAttribute('role', 'status');
+            message.hidden = true;
+            remove.onclick = async () => {
+                remove.disabled = true;
+                message.hidden = true;
+                try {
+                    const result = await onCanvasSchemaEdit({ kind: 'remove-relationship', relation });
+                    // SQL rerenders or switching connectors replaces this footer.
+                    // A late confirmation must never close a different popup.
+                    if (!footer.isConnected) return;
+                    if (result?.ok) hideConnectorSidePopup();
+                    else if (!result?.cancelled) { message.textContent = result?.message || 'Unable to delete this connection. Reopen it and try again.'; message.hidden = false; }
+                } catch {
+                    if (footer.isConnected) { message.textContent = 'Unable to delete this connection. Reopen it and try again.'; message.hidden = false; }
+                } finally {
+                    remove.disabled = false;
+                    // Modal cleanup can attempt restoration before this button
+                    // is enabled. Restore after cleanup, only to this live popup.
+                    window.setTimeout(() => { if (footer.isConnected) remove.focus({ preventScroll: true }); }, 0);
+                }
+            };
+            footer.append(remove, message);
+            connectorSidePopup.appendChild(footer);
+        }
     }
 
     function refreshConnectorSidePopup(connector) {
@@ -1493,7 +1718,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         const hostRect = connectorPopupHost.getBoundingClientRect();
         const margin = 10;
         const gap = 12;
-        const popupWidth = connectorSidePopup.offsetWidth || 280;
+        const popupWidth = connectorSidePopup.offsetWidth || 380;
         const popupHeight = connectorSidePopup.offsetHeight || 154;
         const controlsRect = connectorPopupHost.querySelector('#erd-controls')?.getBoundingClientRect();
         const rightBoundary = controlsRect ? Math.max(margin + popupWidth, controlsRect.left - hostRect.left - 8) : hostRect.width - margin;
@@ -1521,6 +1746,13 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         event.preventDefault();
         hideConnectorSidePopup();
         canvas.focus({ preventScroll: true });
+    });
+    reconnectStatus.hidden = true;
+    canvas.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && draggingConnectorEndpoint) {
+            event.preventDefault();
+            finishEndpointDrag(true);
+        }
     });
 
     // ════════════════════════════════════════════════════════════════════
@@ -2384,7 +2616,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     }
 
     function getConnectorEndpointHit(x, y, { includeAll = false } = {}) {
-        const indexes = includeAll ? connectorPaths.map((_connector, index) => index) : [getActiveConnectorIndex()].filter((index) => index !== null);
+        const activeIndex = getActiveConnectorIndex();
+        // Shared key fields can have coincident heads. The selected connector
+        // wins ties so a drag cannot accidentally edit a neighboring FK.
+        const indexes = (includeAll ? [activeIndex, ...connectorPaths.map((_connector, index) => index).filter((index) => index !== activeIndex)] : [activeIndex]).filter((index) => index !== null);
         const hitRadius = 13 / Math.max(contextManager.zoom, 0.001);
         let closest = null;
         indexes.forEach((connectorIndex) => {
@@ -2455,6 +2690,37 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             ctx.stroke();
             ctx.restore();
         });
+    }
+
+    function drawEndpointReconnectPreview(ctx, zoom) {
+        const drag = draggingConnectorEndpoint;
+        const connector = connectorPaths[drag.connectorIndex];
+        const fixed = getConnectorEndpointDetails(connector, drag.endpoint === 'from' ? 'to' : 'from');
+        if (!fixed || !drag.point) return;
+        const color = drag.validation?.ok ? '#16a34a' : drag.target ? '#ef4444' : theme.connectorHover;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2 / zoom;
+        ctx.setLineDash([6 / zoom, 4 / zoom]);
+        ctx.beginPath();
+        ctx.moveTo(fixed.point.x, fixed.point.y);
+        ctx.lineTo(drag.point.x, drag.point.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (drag.target) {
+            const table = schema.tables.find((t) => t.name === drag.target.table);
+            const top = table.y - table.height / 2 + NODE_H + drag.target.rowIndex * ROW_H;
+            ctx.globalAlpha = 0.13;
+            ctx.fillStyle = color;
+            ctx.fillRect(table.x - table.width / 2, top, table.width, ROW_H);
+            ctx.globalAlpha = 1;
+            ctx.strokeRect(table.x - table.width / 2, top, table.width, ROW_H);
+        }
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(drag.point.x, drag.point.y, 6 / zoom, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
     }
 
     // Helper: Draw rounded corner
@@ -2736,6 +3002,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     }
     let disposed = false;
     window._erdStopPrev = () => {
+        canvasSchemaControls.dispose();
         disposed = true;
     };
 
@@ -2979,6 +3246,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             });
         });
 
+        if (showConnectorEditor && draggingConnectorEndpoint?.didMove) {
+            drawEndpointReconnectPreview(drawCtx, zoom);
+        }
+
         // Handles paint above table edges so the attachment point remains
         // visible and draggable even when the connector itself is underneath.
         if (showConnectorEditor) {
@@ -2989,7 +3260,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         // ====== Z-INDEX: 4.5. DRAW HOVERED CONNECTOR INSPECTOR ======
         // Canvas-only tooltip: no DOM nodes, no observers, and drawn in the
         // current world transform so it scales with tables during zoom.
-        if (hoveredConnectorIdx !== null && connectorPaths[hoveredConnectorIdx]) {
+        if (!draggingConnectorEndpoint && hoveredConnectorIdx !== null && connectorPaths[hoveredConnectorIdx]) {
             drawConnectorInspectorTooltip(
                 drawCtx,
                 connectorPaths[hoveredConnectorIdx],
@@ -3341,6 +3612,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             staticCacheValid = false;
         }
         renderMinimap();
+        canvasSchemaControls.update();
     }
 
     // Per-animation-frame fast path: blit cached layers and restroke only
@@ -3455,8 +3727,16 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
 
         if (!canvas || !canvas.width || !canvas.height) return null;
 
-        const baseWidth = canvas.width;
-        const baseHeight = canvas.height;
+        // Keep the original viewport exporter intact. Full-diagram capture only
+        // changes the source bounds/camera and uses the same preset scaling below.
+        let diagramBounds = null;
+        if (options.scope === 'diagram') {
+            syncTableHeights();
+            diagramBounds = getErdExportBounds(schema.tables, buildConnectorPaths(schema, safeInferredRelations));
+            if (!diagramBounds) return null;
+        }
+        const baseWidth = diagramBounds?.width ?? canvas.width;
+        const baseHeight = diagramBounds?.height ?? canvas.height;
         const minScale = Math.max(minWidth / baseWidth, minHeight / baseHeight, 1);
         const maxScale = Math.min(maxSize / baseWidth, maxSize / baseHeight);
         let exportScale = Math.max(scale, minScale);
@@ -3476,9 +3756,9 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         });
         if (!exportCtx) return null;
 
-        const exportZoom = contextManager.zoom * exportScale;
-        const exportOffsetX = contextManager.offsetX * exportScale;
-        const exportOffsetY = contextManager.offsetY * exportScale;
+        const exportZoom = diagramBounds ? exportScale : contextManager.zoom * exportScale;
+        const exportOffsetX = (diagramBounds ? -diagramBounds.x : contextManager.offsetX) * exportScale;
+        const exportOffsetY = (diagramBounds ? -diagramBounds.y : contextManager.offsetY) * exportScale;
 
         draw({
             targetCtx: exportCtx,
@@ -3699,9 +3979,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     }
 
     canvas.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
         const { x, y } = screenToWorld(e.clientX, e.clientY);
 
-        const endpointHit = getConnectorEndpointHit(x, y);
+        const endpointHit = getConnectorEndpointHit(x, y, { includeAll: true });
         if (endpointHit) {
             draggingConnectorEndpoint = {
                 connectorIndex: endpointHit.connectorIndex,
@@ -3711,10 +3992,12 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
                 startClientY: e.clientY,
                 didMove: false,
             };
+            hideConnectorSidePopup({ clearSelection: false });
+            canvas.focus({ preventScroll: true });
             selectedConnectorKey = endpointHit.connector.relationKey;
             hoveredConnectorIdx = endpointHit.connectorIndex;
             hoveredConnectorPoint = { x, y };
-            canvas.style.cursor = 'ew-resize';
+            canvas.style.cursor = 'grab';
             e.preventDefault();
             e.stopPropagation();
             requestRedraw();
@@ -3790,24 +4073,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     });
     canvas.addEventListener('mousemove', (e) => {
         if (draggingConnectorEndpoint) {
-            const { x, y } = screenToWorld(e.clientX, e.clientY);
-            const connector = connectorPaths[draggingConnectorEndpoint.connectorIndex];
-            const details = getConnectorEndpointDetails(connector, draggingConnectorEndpoint.endpoint);
-            if (connector && details) {
-                const currentSide = draggingConnectorEndpoint.endpoint === 'from' ? connector.fromSide : connector.toSide;
-                const nextSide = chooseConnectorSideFromPointer(x, details.table.x, currentSide, 12 / Math.max(contextManager.zoom, 0.001));
-                const currentOverride = contextManager.getConnectorEndpointSides(connector.relationKey)[draggingConnectorEndpoint.endpoint];
-                if (currentOverride !== nextSide) {
-                    contextManager.setConnectorEndpointSide(connector.relationKey, draggingConnectorEndpoint.endpoint, nextSide);
-                    refreshConnectorSidePopup(connector);
-                }
-                draggingConnectorEndpoint.didMove = draggingConnectorEndpoint.didMove || Math.hypot(e.clientX - draggingConnectorEndpoint.startClientX, e.clientY - draggingConnectorEndpoint.startClientY) >= 4;
-                hoveredConnectorIdx = draggingConnectorEndpoint.connectorIndex;
-                hoveredConnectorPoint = { x, y };
-                connectorTooltipCache = null;
-                canvas.style.cursor = 'ew-resize';
-                requestRedraw();
-            }
+            updateEndpointDrag(e.clientX, e.clientY);
             return;
         }
         if (draggingNode) {
@@ -3827,12 +4093,12 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
         // Only hover connector when not dragging node or panning
         const { x, y } = screenToWorld(e.clientX, e.clientY);
-        const endpointHover = getConnectorEndpointHit(x, y);
+        const endpointHover = getConnectorEndpointHit(x, y, { includeAll: true });
         if (endpointHover) {
             hoveredConnectorIdx = endpointHover.connectorIndex;
             hoveredConnectorPoint = { x, y };
             connectorTooltipCache = null;
-            canvas.style.cursor = 'ew-resize';
+            canvas.style.cursor = 'grab';
             requestRedraw();
             return;
         }
@@ -3948,17 +4214,8 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     });
     canvas.addEventListener('mouseup', (e) => {
         if (draggingConnectorEndpoint) {
-            const drag = draggingConnectorEndpoint;
-            const connector = connectorPaths[drag.connectorIndex];
-            if (connector && !drag.didMove) {
-                const currentSide = drag.endpoint === 'from' ? connector.fromSide : connector.toSide;
-                contextManager.setConnectorEndpointSide(connector.relationKey, drag.endpoint, currentSide === 'left' ? 'right' : 'left');
-                refreshConnectorSidePopup(connector);
-            }
-            draggingConnectorEndpoint = null;
-            canvas.style.cursor = 'ew-resize';
-            connectorTooltipCache = null;
-            requestRedraw();
+            if (draggingConnectorEndpoint.didMove) updateEndpointDrag(e.clientX, e.clientY);
+            finishEndpointDrag();
             return;
         }
         draggingNode = null;
@@ -3981,7 +4238,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
     });
     canvas.addEventListener('mouseleave', (_e) => {
-        draggingConnectorEndpoint = null;
+        finishEndpointDrag(true);
         draggingNode = null;
         panning = false;
         canvas.style.cursor = 'default';
@@ -4125,7 +4382,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
 
         // A second finger can arrive after the first one started a drag. Pinch
         // owns the gesture from this point, so cancel every single-touch mode.
-        draggingConnectorEndpoint = null;
+        finishEndpointDrag(true);
         draggingNode = null;
         panning = false;
         hideConnectorSidePopup();
@@ -4160,10 +4417,12 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
                     startClientY: touch.clientY,
                     didMove: false,
                 };
+                hideConnectorSidePopup({ clearSelection: false });
+                canvas.focus({ preventScroll: true });
                 selectedConnectorKey = endpointHit.connector.relationKey;
                 hoveredConnectorIdx = endpointHit.connectorIndex;
                 hoveredConnectorPoint = { x, y };
-                canvas.style.cursor = 'ew-resize';
+                canvas.style.cursor = 'grab';
                 requestRedraw();
                 e.preventDefault();
                 e.stopPropagation();
@@ -4250,23 +4509,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             }
             const touch = e.touches[0];
             if (draggingConnectorEndpoint) {
-                const { x, y } = getTouchPos(touch);
-                const connector = connectorPaths[draggingConnectorEndpoint.connectorIndex];
-                const details = getConnectorEndpointDetails(connector, draggingConnectorEndpoint.endpoint);
-                if (connector && details) {
-                    const currentSide = draggingConnectorEndpoint.endpoint === 'from' ? connector.fromSide : connector.toSide;
-                    const nextSide = chooseConnectorSideFromPointer(x, details.table.x, currentSide, 12 / Math.max(contextManager.zoom, 0.001));
-                    const currentOverride = contextManager.getConnectorEndpointSides(connector.relationKey)[draggingConnectorEndpoint.endpoint];
-                    if (currentOverride !== nextSide) {
-                        contextManager.setConnectorEndpointSide(connector.relationKey, draggingConnectorEndpoint.endpoint, nextSide);
-                        refreshConnectorSidePopup(connector);
-                    }
-                    draggingConnectorEndpoint.didMove = draggingConnectorEndpoint.didMove || Math.hypot(touch.clientX - draggingConnectorEndpoint.startClientX, touch.clientY - draggingConnectorEndpoint.startClientY) >= 6;
-                    hoveredConnectorIdx = draggingConnectorEndpoint.connectorIndex;
-                    hoveredConnectorPoint = { x, y };
-                    connectorTooltipCache = null;
-                    requestRedraw();
-                }
+                updateEndpointDrag(touch.clientX, touch.clientY);
                 e.preventDefault();
                 return;
             }
@@ -4307,16 +4550,9 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             return;
         }
         if (draggingConnectorEndpoint) {
-            const drag = draggingConnectorEndpoint;
-            const connector = connectorPaths[drag.connectorIndex];
-            if (connector && !drag.didMove) {
-                const currentSide = drag.endpoint === 'from' ? connector.fromSide : connector.toSide;
-                contextManager.setConnectorEndpointSide(connector.relationKey, drag.endpoint, currentSide === 'left' ? 'right' : 'left');
-                refreshConnectorSidePopup(connector);
-            }
-            draggingConnectorEndpoint = null;
-            connectorTooltipCache = null;
-            requestRedraw();
+            const touch = e.changedTouches?.[0];
+            if (e.type !== 'touchcancel' && touch && draggingConnectorEndpoint.didMove) updateEndpointDrag(touch.clientX, touch.clientY);
+            finishEndpointDrag(e.type === 'touchcancel');
             return;
         }
         draggingNode = null;
@@ -4685,7 +4921,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         if (autoColorPopup && autoColorOnlyBtn && autoColorPopup.style.display === 'flex' && !autoColorPopup.contains(e.target) && !autoColorOnlyBtn.contains(e.target)) {
             hideAutoColorPopup();
         }
-        if (connectorSidePopup.classList.contains('is-open') && !connectorSidePopup.contains(e.target) && e.target !== canvas) {
+        // A confirmation lives outside this native popup. Keep its editor open
+        // while awaiting the result so Cancel returns to the same connection.
+        if (connectorSidePopup.classList.contains('is-open') && !connectorSidePopup.contains(e.target) && e.target !== canvas
+            && !connectorSidePopup.querySelector('.erd-connector-side-popup__delete:disabled')) {
             hideConnectorSidePopup();
         }
     };
@@ -4803,6 +5042,21 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     }
     requestRedraw();
     updateButtonsVisibility();
+
+    // Toolbar popups survive a renderer replacement. An early open can show
+    // the empty starter schema while layout is pending; refresh it when this
+    // schema becomes active, preserving the user's filter and keyboard target.
+    if (tableNavPopup?.style.display === 'block') {
+        const focusedTableName = tableNavList?.contains(document.activeElement)
+            ? document.activeElement.closest('.table-nav-item')?.dataset.tableName
+            : null;
+        renderTableNavList(tableNavSearch?.value || '');
+        positionToolbarPopup(tableNavPopup, tableNavBtn);
+        if (focusedTableName) {
+            const nextFocus = [...tableNavList.querySelectorAll('.table-nav-item')].find(item => item.dataset.tableName === focusedTableName);
+            (nextFocus || tableNavSearch)?.focus({ preventScroll: true });
+        }
+    }
 
     // ════════════════════════════════════════════════════════════════════
     //  SECTION 13 — Schema-change cleanup

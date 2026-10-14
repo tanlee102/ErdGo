@@ -1,7 +1,6 @@
 node_modules/
 dist/
 coverage/
-tests/
 test-results/
 playwright-report/
 .vitest/

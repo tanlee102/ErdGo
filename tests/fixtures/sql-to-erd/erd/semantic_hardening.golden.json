@@ -1,0 +1,241 @@
+{
+  "enums": [
+    {
+      "name": "app.status",
+      "values": [
+        "draft",
+        "active"
+      ]
+    },
+    {
+      "name": "audit.status",
+      "values": [
+        "queued",
+        "archived"
+      ]
+    }
+  ],
+  "composites": [],
+  "tables": [
+    {
+      "name": "app.customer_accounts",
+      "columns": [
+        {
+          "name": "tenant_id",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "compositePk": true
+        },
+        {
+          "name": "account_no",
+          "type": "TEXT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "compositePk": true
+        },
+        {
+          "name": "a,b",
+          "type": "INT",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": [],
+          "compositeUq": true
+        },
+        {
+          "name": "c.d",
+          "type": "INT",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": [],
+          "compositeUq": true
+        },
+        {
+          "name": "state",
+          "type": "app.status",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT 'active'"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "app.contacts",
+      "columns": [
+        {
+          "name": "tenant_id",
+          "type": "INT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        },
+        {
+          "name": "account_no",
+          "type": "TEXT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        },
+        {
+          "name": "a,b",
+          "type": "INT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        },
+        {
+          "name": "c.d",
+          "type": "INT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        },
+        {
+          "name": "contact_email",
+          "type": "VARCHAR(320)",
+          "constraints": [
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "reviewer_ref",
+          "type": "INT",
+          "constraints": [],
+          "extras": [],
+          "fk": true
+        }
+      ]
+    },
+    {
+      "name": "\"tenant.users\"",
+      "columns": [
+        {
+          "name": "id.part",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true
+        },
+        {
+          "name": "email",
+          "type": "TEXT",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": []
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": {
+        "table": "app.contacts",
+        "column": "a,b"
+      },
+      "to": {
+        "table": "app.customer_accounts",
+        "column": "a,b"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_contacts_quoted",
+      "actions": {
+        "onUpdate": "SET NULL"
+      }
+    },
+    {
+      "from": {
+        "table": "app.contacts",
+        "column": "account_no"
+      },
+      "to": {
+        "table": "app.customer_accounts",
+        "column": "account_no"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_contacts_accounts",
+      "actions": {
+        "onDelete": "CASCADE",
+        "deferrable": true,
+        "initially": "DEFERRED"
+      }
+    },
+    {
+      "from": {
+        "table": "app.contacts",
+        "column": "c.d"
+      },
+      "to": {
+        "table": "app.customer_accounts",
+        "column": "c.d"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_contacts_quoted",
+      "actions": {
+        "onUpdate": "SET NULL"
+      }
+    },
+    {
+      "from": {
+        "table": "app.contacts",
+        "column": "reviewer_ref"
+      },
+      "to": {
+        "table": "\"tenant.users\"",
+        "column": "id.part"
+      },
+      "fromCard": "0..n",
+      "toCard": "0..1",
+      "actions": {
+        "onDelete": "SET NULL"
+      }
+    },
+    {
+      "from": {
+        "table": "app.contacts",
+        "column": "tenant_id"
+      },
+      "to": {
+        "table": "app.customer_accounts",
+        "column": "tenant_id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_contacts_accounts",
+      "actions": {
+        "onDelete": "CASCADE",
+        "deferrable": true,
+        "initially": "DEFERRED"
+      }
+    }
+  ],
+  "diagnostics": []
+}

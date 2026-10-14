@@ -25,6 +25,7 @@ export default function SqlTabsBar({
     const tabsListRef = useRef(null);
     const draggingTabIdRef = useRef(null);
     const suppressClickRef = useRef(false);
+    const dragCleanupRef = useRef(null);
     const [editingTabId, setEditingTabId] = useState(null);
     const [editingTitle, setEditingTitle] = useState('');
     const [draggingTabId, setDraggingTabId] = useState(null);
@@ -41,6 +42,15 @@ export default function SqlTabsBar({
     const contextTab = contextMenu ? tabs.find((tab) => tab.id === contextMenu.tabId) : null;
     const contextTabIndex = contextTab ? tabs.findIndex((tab) => tab.id === contextTab.id) : -1;
     const isTabDirty = (tabId) => (dirtyTabIds instanceof Set ? dirtyTabIds.has(tabId) : Array.isArray(dirtyTabIds) ? dirtyTabIds.includes(tabId) : false);
+
+    useEffect(() => () => dragCleanupRef.current?.(), []);
+    useEffect(() => {
+        if (canModifyTabs) return;
+        dragCleanupRef.current?.();
+        draggingTabIdRef.current = null;
+        setDraggingTabId(null);
+        setDragOverTabId(null);
+    }, [canModifyTabs]);
 
     const updateTabScrollState = useCallback(() => {
         const tabsList = tabsListRef.current;
@@ -124,6 +134,12 @@ export default function SqlTabsBar({
         if (!contextMenu) return undefined;
 
         const closeContextMenu = () => setContextMenu(null);
+        const viewport = { width: window.innerWidth, height: window.innerHeight };
+        const handleViewportResize = () => {
+            // Canvas refreshes dispatch synthetic resize events after SQL
+            // changes. They must not dismiss a menu the user just opened.
+            if (window.innerWidth !== viewport.width || window.innerHeight !== viewport.height) closeContextMenu();
+        };
         const handleKeyDown = (event) => {
             if (event.key === 'Escape') {
                 closeContextMenu();
@@ -131,12 +147,12 @@ export default function SqlTabsBar({
         };
 
         window.addEventListener('click', closeContextMenu);
-        window.addEventListener('resize', closeContextMenu);
+        window.addEventListener('resize', handleViewportResize);
         window.addEventListener('keydown', handleKeyDown);
 
         return () => {
             window.removeEventListener('click', closeContextMenu);
-            window.removeEventListener('resize', closeContextMenu);
+            window.removeEventListener('resize', handleViewportResize);
             window.removeEventListener('keydown', handleKeyDown);
         };
     }, [contextMenu]);
@@ -165,6 +181,17 @@ export default function SqlTabsBar({
     };
 
     const handleTabKeyDown = (event, tab) => {
+        if (disabled) return;
+        if (!event.altKey && !event.ctrlKey && !event.metaKey && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+            event.preventDefault();
+            const index = tabs.findIndex((item) => item.id === tab.id);
+            const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+            const nextTab = tabs[nextIndex];
+            const button = Array.from(tabsListRef.current?.querySelectorAll('[role="tab"]') || []).find((element) => element.closest('.sql-tab-item')?.dataset.tabId === nextTab.id);
+            button?.focus();
+            onActivateTab(nextTab.id);
+            return;
+        }
         if (!canModifyTabs) return;
 
         if (event.key === 'F2') {
@@ -220,6 +247,7 @@ export default function SqlTabsBar({
     };
 
     const clearDragState = () => {
+        dragCleanupRef.current?.();
         draggingTabIdRef.current = null;
         setDraggingTabId(null);
         setDragOverTabId(null);
@@ -252,6 +280,7 @@ export default function SqlTabsBar({
     const handleMouseDown = (event, tabId) => {
         if (disabled || editingTabId || event.button !== 0) return;
         if (event.target.closest('.sql-tab-close') || event.target.closest('.sql-tab-rename-input')) return;
+        dragCleanupRef.current?.();
 
         // Select on mouse-down, not click, so pressing and holding a tab before
         // dragging still focuses that tab immediately.
@@ -268,7 +297,8 @@ export default function SqlTabsBar({
 
         const getTabIdAtPoint = (clientX, clientY) => {
             if (typeof document.elementFromPoint !== 'function') return null;
-            return document.elementFromPoint(clientX, clientY)?.closest('.sql-tab-item')?.dataset.tabId || null;
+            const item = document.elementFromPoint(clientX, clientY)?.closest('.sql-tab-item');
+            return item && tabsListRef.current?.contains(item) ? item.dataset.tabId : null;
         };
 
         const handleMouseMove = (moveEvent) => {
@@ -286,10 +316,7 @@ export default function SqlTabsBar({
         };
 
         const handleMouseUp = (upEvent) => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-
-            const targetTabId = dragState.hasMoved ? dragState.targetTabId || getTabIdAtPoint(upEvent.clientX, upEvent.clientY) : null;
+            const targetTabId = dragState.hasMoved ? getTabIdAtPoint(upEvent.clientX, upEvent.clientY) : null;
             if (dragState.hasMoved) {
                 // The real action was reorder, not activation. Suppress the
                 // synthetic click that follows mouseup so the dragged tab does
@@ -305,8 +332,20 @@ export default function SqlTabsBar({
             clearDragState();
         };
 
+        const cancelDrag = () => clearDragState();
+        const cancelOnEscape = (keyEvent) => { if (keyEvent.key === 'Escape') cancelDrag(); };
+        dragCleanupRef.current = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('keydown', cancelOnEscape);
+            window.removeEventListener('blur', cancelDrag);
+            dragCleanupRef.current = null;
+        };
+
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
+        window.addEventListener('keydown', cancelOnEscape);
+        window.addEventListener('blur', cancelDrag);
     };
 
     const scrollTabs = (direction) => {
@@ -412,6 +451,7 @@ export default function SqlTabsBar({
                                         type="button"
                                         className="sql-tab-button"
                                         role="tab"
+                                        tabIndex={isActive ? 0 : -1}
                                         aria-selected={isActive}
                                         disabled={disabled}
                                         title={`${tab.title}${isInactive ? ' - inactive: saved only, excluded from parse, ERD, data, and AI' : ''}${isDirty ? ' - unsaved changes' : ''}${reviewMode && totalReviewChanges > 0 ? ` - ${pendingReviewChanges} pending AI change${pendingReviewChanges === 1 ? '' : 's'}` : ''}${canModifyTabs ? ' - double-click to rename, Alt+Left/Right to move' : ''}`}

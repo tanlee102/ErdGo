@@ -1,0 +1,205 @@
+{
+  "enums": [],
+  "composites": [],
+  "tables": [
+    {
+      "name": "accounts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "email",
+          "type": "TEXT",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "status",
+          "type": "TEXT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT 'active'",
+            "CHECK (status IN('active', 'disabled'))"
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "TEXT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT CURRENT_TIMESTAMP"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "notebooks",
+      "columns": [
+        {
+          "name": "account_id",
+          "type": "INTEGER",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "fk": true,
+          "compositePk": true
+        },
+        {
+          "name": "notebook_id",
+          "type": "TEXT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "compositePk": true
+        },
+        {
+          "name": "title",
+          "type": "TEXT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "CHECK (length(title) > 0)"
+          ]
+        },
+        {
+          "name": "normalized_title",
+          "type": "TEXT",
+          "constraints": [],
+          "extras": [
+            "GENERATED ALWAYS AS (lower(title)) STORED"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "notes",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INTEGER",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "account_id",
+          "type": "INTEGER",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [],
+          "fk": true,
+          "compositeIdx": true
+        },
+        {
+          "name": "notebook_id",
+          "type": "TEXT",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [],
+          "fk": true,
+          "compositeIdx": true
+        },
+        {
+          "name": "body",
+          "type": "TEXT",
+          "constraints": [
+            "IDX"
+          ],
+          "extras": []
+        },
+        {
+          "name": "is_archived",
+          "type": "INTEGER",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT 0",
+            "CHECK (is_archived IN(0, 1))"
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": {
+        "table": "notebooks",
+        "column": "account_id"
+      },
+      "to": {
+        "table": "accounts",
+        "column": "id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "actions": {
+        "onDelete": "CASCADE"
+      }
+    },
+    {
+      "from": {
+        "table": "notes",
+        "column": "account_id"
+      },
+      "to": {
+        "table": "notebooks",
+        "column": "account_id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "actions": {
+        "onDelete": "CASCADE",
+        "onUpdate": "CASCADE"
+      }
+    },
+    {
+      "from": {
+        "table": "notes",
+        "column": "notebook_id"
+      },
+      "to": {
+        "table": "notebooks",
+        "column": "notebook_id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "actions": {
+        "onDelete": "CASCADE",
+        "onUpdate": "CASCADE"
+      }
+    }
+  ],
+  "diagnostics": []
+}

@@ -9,6 +9,7 @@ import {
     identifierLeafName,
     identifierNamespaceParts,
     identifierPartsFrom,
+    identifierPartsFromText,
 } from './sqlIdentifierIdentity.js';
 
 /**
@@ -113,7 +114,7 @@ export function sqlToErdSchema(sql, options = {}) {
         if (typeof sql !== 'string') throw new Error('SQL input must be a string');
         if (!sql.trim()) {
             // Return an empty but well-formed schema so callers (editor live-
-            // preview and validators) can render a blank ERD without
+            // preview, tests, validators) can render a blank ERD without
             // hitting an exception. The renderer contract still holds.
             return { enums: [], composites: [], tables: [], relations: [], _parseErrors: [] };
         }
@@ -346,6 +347,7 @@ function buildTableLifecyclePlan(ast, dialect, defaultSchema) {
     const records = [];
     const operationTargets = new WeakMap();
     const referenceTargets = new WeakMap();
+    const referencePartsByOwner = new WeakMap();
     const unresolvedReferences = [];
     const active = new Map();
     const events = [];
@@ -355,11 +357,18 @@ function buildTableLifecyclePlan(ast, dialect, defaultSchema) {
     indexes.forEach((index, order) => events.push({ kind: 'index', value: index, order: order + 2000000, index: index.position?.start?.idx ?? Number.MAX_SAFE_INTEGER }));
     tableDrops.forEach((drop, order) => events.push({ kind: 'drop', value: drop, order: order + 3000000, index: drop.position?.start?.idx ?? Number.MAX_SAFE_INTEGER }));
 
-    const bindReference = (reference, index) => {
+    const bindReference = (reference, index, ownerParts) => {
         if (!reference?.table) return;
-        const target = resolveLifecycleTable(active, reference.table, reference.tableParts, dialect, defaultSchema);
+        let parts = identifierPartsFrom(reference.table, reference.tableParts);
+        const namespace = identifierNamespaceParts(ownerParts || []);
+        if (dialect === 'sqlite' && parts.length === 1 && namespace.length && identifierKey(namespace, dialect) !== String(defaultSchema || 'main').toLowerCase()) {
+            // SQLite FKs resolve inside their source database. Bind that
+            // identity before table renames or later same-named declarations.
+            parts = [...namespace, ...parts]; referencePartsByOwner.set(reference, parts);
+        }
+        const target = resolveLifecycleTable(active, reference.table, parts, dialect, defaultSchema);
         if (target) referenceTargets.set(reference, target);
-        else unresolvedReferences.push({ reference, index });
+        else unresolvedReferences.push({ reference, parts, index });
     };
 
     events.sort((left, right) => left.index - right.index || left.order - right.order).forEach((event) => {
@@ -385,7 +394,7 @@ function buildTableLifecyclePlan(ast, dialect, defaultSchema) {
             }
             // Register the table before its references so self-referential FKs
             // bind to this exact incarnation.
-            tableReferenceObjects(event.value).forEach((reference) => bindReference(reference, event.index));
+            tableReferenceObjects(event.value).forEach((reference) => bindReference(reference, event.index, currentParts));
             return;
         }
 
@@ -404,8 +413,8 @@ function buildTableLifecyclePlan(ast, dialect, defaultSchema) {
         operationTargets.set(event.value, record);
 
         if (event.kind === 'index') return;
-        if (event.value.references) bindReference(event.value.references, event.index);
-        if (event.value.column?.references) bindReference(event.value.column.references, event.index);
+        if (event.value.references) bindReference(event.value.references, event.index, record.currentParts);
+        if (event.value.column?.references) bindReference(event.value.column.references, event.index, record.currentParts);
         if (event.value.action !== 'rename_table' || !event.value.newName) return;
 
         let nextParts = identifierPartsFrom(event.value.newName, event.value.newTableParts);
@@ -426,12 +435,12 @@ function buildTableLifecyclePlan(ast, dialect, defaultSchema) {
     // contain them for other dialects. Resolve an initially missing target to
     // the earliest later incarnation that ever owned that identifier, even if
     // the target was subsequently renamed.
-    unresolvedReferences.forEach(({ reference, index }) => {
-        const key = lifecycleIdentifierKey(reference.table, reference.tableParts, dialect, defaultSchema);
+    unresolvedReferences.forEach(({ reference, parts, index }) => {
+        const key = lifecycleIdentifierKey(reference.table, parts, dialect, defaultSchema);
         const later = records
             .filter((record) => record.createIndex >= index && record.aliasKeys.has(key))
             .sort((left, right) => left.createIndex - right.createIndex)[0];
-        const target = later || resolveLifecycleTable(active, reference.table, reference.tableParts, dialect, defaultSchema);
+        const target = later || resolveLifecycleTable(active, reference.table, parts, dialect, defaultSchema);
         if (target) referenceTargets.set(reference, target);
     });
 
@@ -457,6 +466,7 @@ function buildTableLifecyclePlan(ast, dialect, defaultSchema) {
         displayEntries,
         operationTargets,
         referenceTargets,
+        referencePartsByOwner,
         survivingRecords,
         replacementByDroppedRecord,
         dialect,
@@ -472,7 +482,12 @@ function finalTypesAfterDrops(ast, dialect, defaultSchema) {
 }
 
 function referenceForTableLifecycle(reference, lifecyclePlan) {
-    if (!reference || !lifecyclePlan?.referenceTargets?.has(reference)) return reference;
+    if (!reference) return reference;
+    if (!lifecyclePlan?.referenceTargets?.has(reference)) {
+        const parts = lifecyclePlan?.referencePartsByOwner?.get(reference);
+        if (!parts) return reference;
+        const next = { ...reference, table: identifierFullName(parts) }; attachHiddenIdentifierMeta(next, { tableParts: parts }); return next;
+    }
     const target = lifecyclePlan.referenceTargets.get(reference);
     // A reference bound to an object that was later dropped must not silently
     // rebind under PostgreSQL DROP ... CASCADE, which removes the referencing
@@ -620,6 +635,14 @@ function convertAstToErdSchema(ast) {
                 displayName: meta.displayName,
                 fullName: meta.fullName,
                 sourceName: meta.sourceFullName,
+                nameParts: meta.parts,
+                sourceParts: meta.sourceParts || meta.parts,
+                // Native options guide canvas defaults without changing saved
+                // renderer JSON or serializing schema semantics into context.
+                options: { ...(table.options || {}) },
+                // Keep the surviving CREATE's origin through renames and
+                // drop/recreate cycles so editor tabs never guess its owner.
+                sourcePosition: alterPositionToPos(table.position),
                 schemaName: meta.namespaceName,
                 hasExplicitSchema: meta.hasExplicitSchema,
                 hasImplicitDefaultSchema: meta.hasImplicitDefaultSchema,
@@ -664,7 +687,7 @@ function convertAstToErdSchema(ast) {
                     erdTable.columns.push(erdColumn);
                     if (erdColumn.pk) tableEntry.primaryColumns.push(col.name);
                     const columnKey = identifierKey(columnIdentityParts(erdColumn), dialect);
-                    if (erdColumn.constraints.includes('UQ') && !tableConstraintUniqueMembers.has(columnKey)) {
+                    if (col.unique && !tableConstraintUniqueMembers.has(columnKey)) {
                         addUniqueColumnGroup(tableEntry, [col.name]);
                     }
 
@@ -820,9 +843,15 @@ function convertAstToErdSchema(ast) {
         });
     refreshTableDisplayNames(tableColumnsMap, tableResolver);
 
+    // Keep complete surviving keys available to visual editors without
+    // mistaking a composite badge or a partial index for a single-field key.
+    tableColumnsMap.forEach(entry => attachHiddenIdentifierMeta(entry.table, {
+        candidateKeyColumnGroups: [entry.primaryColumns, ...entry.uniqueColumnGroups].filter(group => group.length).map(group => [...group]),
+    }));
+
     // 3.5 Process CREATE [UNIQUE] INDEX statements + inline MySQL
     //     `KEY/INDEX/FULLTEXT/SPATIAL` entries (parser surfaces both as
-    //     `ast.indexes`). Each global unique index promotes a column to UQ,
+    //     `ast.indexes`). Each complete column-only global unique index promotes a column to UQ,
     //     filtered unique indexes show a PUQ badge without becoming FK targets,
     //     and non-unique indexes stamp an `IDX` badge. Composite indexes
     //     additionally set `compositeUq` / `compositePartialUq` / `compositeIdx` so the renderer
@@ -839,7 +868,9 @@ function convertAstToErdSchema(ast) {
 /**
  * Apply parsed indexes to their target columns. Mirrors the table-level
  * UNIQUE constraint logic so `CREATE UNIQUE INDEX x ON t(a)` produces the
- * same UQ badge as `UNIQUE (a)` would. Partial / filtered unique indexes
+ * same UQ badge as `UNIQUE (a)` would. Mixed expression indexes retain IDX
+ * on projectable columns without claiming uniqueness for an incomplete key.
+ * Partial / filtered column-only unique indexes
  * (for example `... WHERE deleted_at IS NULL`) get a visible `PUQ` badge
  * and predicate tooltip, but they are intentionally NOT added to
  * `uniqueColumnGroups` because they are not globally unique FK targets.
@@ -1087,7 +1118,7 @@ function addPlainIndexMetadata(tableEntry, index) {
     const existing = index.name
         ? tableEntry.plainIndexes.find((candidate) => metadataNamesEqual(candidate.name, candidate.nameParts, index.name, index.nameParts, tableEntry.dialect))
         : tableEntry.plainIndexes.find((candidate) => !candidate.name && sameColumnSet(candidate.columns, index.columns, tableEntry.dialect));
-    const next = { name: index.name || null, nameParts: index.nameParts || null, columns: [...index.columns] };
+    const next = { name: index.name || null, nameParts: index.nameParts || null, columns: [...index.columns], isComposite: index.isComposite === true };
     if (existing) Object.assign(existing, next);
     else tableEntry.plainIndexes.push(next);
 }
@@ -1099,7 +1130,7 @@ function syncPlainIndexBadges(tableEntry) {
         column.compositeIdx = undefined;
     });
     (tableEntry.plainIndexes || []).forEach((index) => {
-        const isComposite = index.columns.length > 1;
+        const isComposite = index.isComposite || index.columns.length > 1;
         index.columns.forEach((columnName) => {
             const column = findColumn(tableEntry, columnName);
             if (!column || column.pk || column.constraints.includes('UQ')) return;
@@ -1171,7 +1202,9 @@ function applyUniqueColumns(tableEntry, columns, name = null, nameParts = null) 
 
 function applyColumnNotNull(tableEntry, columnName, notNull, columnParts = null) {
     const column = findColumn(tableEntry, columnName, columnParts);
-    if (!column || column.pk) return;
+    if (!column) return;
+    column.explicitNotNull = notNull;
+    if (column.pk) return;
     if (notNull) addConstraintBadge(column, 'NN');
     else removeConstraintBadge(column, 'NN');
 }
@@ -1191,6 +1224,8 @@ function syncTableObjectIdentity(tableEntry) {
         displayName: tableEntry.meta.displayName,
         fullName: tableEntry.meta.fullName,
         sourceName: tableEntry.meta.sourceFullName,
+        nameParts: tableEntry.meta.parts,
+        sourceParts: tableEntry.meta.sourceParts || tableEntry.meta.parts,
         schemaName: tableEntry.meta.namespaceName,
         hasExplicitSchema: tableEntry.meta.hasExplicitSchema,
         hasImplicitDefaultSchema: tableEntry.meta.hasImplicitDefaultSchema,
@@ -1551,6 +1586,7 @@ function applyColumnDefinitionChange(tableEntry, alter, enumTypes, typeResolver,
     }
     const erdColumn = convertColumnToErdFormat(alter.column, enumTypes, typeResolver);
     column.type = erdColumn.type;
+    column.declaredTypeSql = erdColumn.declaredTypeSql;
     applyColumnNotNull(tableEntry, column.name, !!alter.column.notNull);
     if (alter.column.primary) applyPrimaryColumns(tableEntry, [...(tableEntry.primaryColumns || []), column.name]);
     if (alter.column.unique) applyUniqueColumns(tableEntry, [column.name]);
@@ -1618,7 +1654,7 @@ function applyAlterOperation(alter, context) {
         applyColumnNotNull(tableEntry, alter.column, !!alter.notNull, alter.columnParts);
     } else if (alter.action === 'alter_column_type') {
         const column = findColumn(tableEntry, alter.column, alter.columnParts);
-        if (column && alter.type) column.type = normalizeColumnType(alter.type, context.typeResolver) || alter.type;
+        if (column && alter.type) { column.type = normalizeColumnType(alter.type, context.typeResolver) || alter.type; column.declaredTypeSql = alter.type; }
         if (column && alter.notNull !== null && alter.notNull !== undefined) applyColumnNotNull(tableEntry, alter.column, !!alter.notNull, alter.columnParts);
     } else if (alter.action === 'modify_column') {
         applyColumnDefinitionChange(tableEntry, alter, context.enumTypes, context.typeResolver, context);
@@ -1634,9 +1670,15 @@ function applyIndexes(indexes, tableResolver, targetTableEntry = null) {
         if (!tableEntry) return;
         const operationIndex = ix.position?.start?.idx;
         if (Number.isFinite(operationIndex) && operationIndex < tableEntry.lifecycleStartIndex) return;
-        const isComposite = ix.columns.length > 1;
-        const isPartialUnique = ix.unique && !!indexWherePredicate(ix);
-        const badge = isPartialUnique ? 'PUQ' : ix.unique ? 'UQ' : 'IDX';
+        const expressionCount = ix.expressions?.length || 0;
+        const isComposite = ix.columns.length + expressionCount > 1;
+        // Projectable columns are only part of an expression index. Uniqueness
+        // of (id, lower(label)) cannot guarantee uniqueness of id by itself,
+        // either globally or under a filter. Retain indexing without inventing
+        // a candidate key or changing an independent PK/UNIQUE guarantee.
+        const isColumnKey = ix.unique && expressionCount === 0;
+        const isPartialUnique = isColumnKey && !!indexWherePredicate(ix);
+        const badge = isPartialUnique ? 'PUQ' : isColumnKey ? 'UQ' : 'IDX';
         const validIndexColumns = [];
         const indexNameParts = indexNamePartsForTable(ix.name, ix.nameParts, tableEntry);
 
@@ -1680,17 +1722,18 @@ function applyIndexes(indexes, tableResolver, targetTableEntry = null) {
             return;
         }
 
-        if (!ix.unique && validIndexColumns.length === ix.columns.length) {
+        if (!isColumnKey && validIndexColumns.length === ix.columns.length) {
             addPlainIndexMetadata(tableEntry, {
                 name: ix.name || null,
                 nameParts: indexNameParts,
                 columns: validIndexColumns,
+                isComposite,
             });
             syncPlainIndexBadges(tableEntry);
             return;
         }
 
-        if (ix.unique && validIndexColumns.length === ix.columns.length) {
+        if (isColumnKey && validIndexColumns.length === ix.columns.length) {
             addUniqueColumnGroup(tableEntry, validIndexColumns, ix.name || null, {
                 displayOnPrimary: false,
                 nameParts: indexNameParts,
@@ -1721,12 +1764,19 @@ function applyIndexDrop(drop, tableColumnsMap, tableResolver) {
  *  match their renderer display name in `enumMap`/`compositeMap`. Anything
  *  that doesn't look like a simple identifier or identifier array is left
  *  untouched. */
-function normalizeColumnType(rawType, typeResolver) {
+function normalizeColumnType(rawType, typeResolver, declaredTypeSql = '') {
     if (!rawType || !typeResolver) return rawType;
     const typeText = String(rawType).trim();
     const arrayMatch = typeText.match(/^(.+?)((?:\[\])+)\s*$/);
     const baseType = arrayMatch ? arrayMatch[1].trim() : typeText;
     const suffix = arrayMatch ? arrayMatch[2] : '';
+
+    const declaredBase = declaredTypeSql.replace(/(?:\[\])+\s*$/, '').trim();
+    if (declaredBase.includes('"')) {
+        const parts = identifierPartsFromText(declaredBase);
+        const resolved = typeResolver.resolve(baseType, parts);
+        if (resolved) return `${resolved.displayName}${suffix}`;
+    }
 
     if (!/^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$/.test(baseType)) return rawType;
 
@@ -1753,12 +1803,14 @@ function normalizeColumnType(rawType, typeResolver) {
 function convertColumnToErdFormat(col, enumTypes, typeResolver) {
     const erdColumn = {
         name: col.name,
-        type: normalizeColumnType(col.type, typeResolver) || 'text',
+        type: normalizeColumnType(col.type, typeResolver, col.declaredTypeSql) || 'text',
         constraints: [],
         extras: [],
     };
     attachHiddenIdentifierMeta(erdColumn, {
         nameParts: col?.nameParts?.length ? col.nameParts : [{ value: col.name, quoted: false }],
+        explicitNotNull: col.notNull === true,
+        declaredTypeSql: col.declaredTypeSql,
     });
 
     if (col.primary) {
@@ -1880,17 +1932,13 @@ function generateRelations(schema, tableColumnsMap, tableResolver) {
             let resolvedRefColumns = resolveReferencedColumns(schema, fk, targetEntry);
             if (resolvedRefColumns.length === 0) return;
             if (resolvedRefColumns.length !== fk.sourceColumns.length) {
-                if (resolvedRefColumns.length === 1) {
-                    resolvedRefColumns = fk.sourceColumns.map(() => resolvedRefColumns[0]);
-                } else {
-                    schema._parseErrors?.push({
-                        kind: 'relation_dropped_column_count_mismatch',
-                        severity: 'warning',
-                        message: `Relation dropped: foreign key from '${tableName}(${fk.sourceColumns.join(', ')})' references '${(targetEntry?.displayName || fk.referencedTable)}(${resolvedRefColumns.join(', ')})' with a different column count.`,
-                        position: fk.position || DEFAULT_POSITION,
-                    });
-                    return;
-                }
+                schema._parseErrors?.push({
+                    kind: 'relation_dropped_column_count_mismatch',
+                    severity: 'warning',
+                    message: `Relation dropped: foreign key from '${tableName}(${fk.sourceColumns.join(', ')})' references '${(targetEntry?.displayName || fk.referencedTable)}(${resolvedRefColumns.join(', ')})' with a different column count.`,
+                    position: fk.position || DEFAULT_POSITION,
+                });
+                return;
             }
 
             if (targetEntry) {
@@ -1969,15 +2017,16 @@ function relationCardinality(isUnique, isRequired) {
 }
 
 function areForeignKeySourceColumnsRequired(tableEntry, sourceColumns) {
-    const columns = tableEntry?.columns || [];
     return sourceColumns.every((sourceColumn) => {
-        const col = columns.find((column) => column.name.toLowerCase() === sourceColumn.toLowerCase());
+        // Preserve PostgreSQL's exact quoted-column identity while retaining
+        // the established case-insensitive fallback for the other dialects.
+        const col = findColumn(tableEntry, sourceColumn);
         if (!col) return false;
-        if (col.constraints.includes('NN')) return true;
+        if (col.explicitNotNull || col.constraints.includes('NN')) return true;
         if (!col.pk) return false;
         if (tableEntry.dialect !== 'sqlite') return true;
         if (tableEntry.options?.strict || tableEntry.options?.withoutRowid) return true;
-        return String(col.type || '').trim().toUpperCase() === 'INTEGER';
+        return !col.compositePk && String(col.type || '').trim().toUpperCase() === 'INTEGER';
     });
 }
 

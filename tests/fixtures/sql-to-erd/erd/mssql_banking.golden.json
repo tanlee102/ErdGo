@@ -1,0 +1,182 @@
+{
+  "enums": [],
+  "composites": [],
+  "tables": [
+    {
+      "name": "Branches",
+      "columns": [
+        {
+          "name": "BranchID",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "Code",
+          "type": "CHAR(6)",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "Name",
+          "type": "NVARCHAR(120)",
+          "constraints": [
+            "NN"
+          ],
+          "extras": []
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "columns": [
+        {
+          "name": "CustomerID",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "BranchID",
+          "type": "INT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        },
+        {
+          "name": "Email",
+          "type": "NVARCHAR(320)",
+          "constraints": [
+            "UQ"
+          ],
+          "extras": []
+        },
+        {
+          "name": "FirstName",
+          "type": "NVARCHAR(80)",
+          "constraints": [
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "LastName",
+          "type": "NVARCHAR(80)",
+          "constraints": [
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "FullName",
+          "type": "COMPUTED",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "AS (FirstName + N' ' + LastName) PERSISTED NOT NULL"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "columns": [
+        {
+          "name": "AccountID",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "CustomerID",
+          "type": "BIGINT",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [],
+          "fk": true,
+          "compositeIdx": true
+        },
+        {
+          "name": "AccountNumber",
+          "type": "NVARCHAR(34)",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "Currency",
+          "type": "CHAR(3)",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT 'USD'"
+          ]
+        },
+        {
+          "name": "ClosedAt",
+          "type": "DATETIME2",
+          "constraints": [],
+          "extras": []
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": {
+        "table": "Accounts",
+        "column": "CustomerID"
+      },
+      "to": {
+        "table": "Customers",
+        "column": "CustomerID"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "FK_Accounts_Customer"
+    },
+    {
+      "from": {
+        "table": "Customers",
+        "column": "BranchID"
+      },
+      "to": {
+        "table": "Branches",
+        "column": "BranchID"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "FK_Customers_Branch"
+    }
+  ],
+  "diagnostics": []
+}

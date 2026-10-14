@@ -91,7 +91,7 @@ export default function RelationshipSuggestionsPanel({ inference, anchorRef }) {
             if (panelRect.height <= 0 || anchorRect.height <= 0) return;
 
             const arrowTop = Math.max(16, Math.min(panelRect.height - 16, anchorRect.top + anchorRect.height / 2 - panelRect.top));
-            const panelRight = Math.max(12, window.innerWidth - anchorRect.left + 12);
+            const panelRight = Math.max(8, window.innerWidth - anchorRect.left + 8);
             panel.style.setProperty('--relationship-suggestions-arrow-top', `${arrowTop}px`);
             panel.style.setProperty('--relationship-suggestions-right', `${panelRight}px`);
         };

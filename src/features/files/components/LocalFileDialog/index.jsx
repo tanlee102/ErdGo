@@ -1,10 +1,12 @@
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useNavigationGuard } from '@/components/NavigationGuard';
 import { useNotifications } from '@/components/Notifications';
 import { deleteLocalDocument, listLocalDocuments, subscribeToLocalDocuments } from '@/features/files/lib/localFileStore';
+import { FILE_KINDS, getDocumentKind, getDocumentKindLabel, getDocumentRoute } from '@/features/files/lib/fileDocuments';
+import useModalFocus from '@/components/Modal/useModalFocus';
 import './index.css';
 
 function formatUpdatedAt(value) {
@@ -34,7 +36,7 @@ const TrashIcon = () => (
 );
 
 export default function LocalFileDialog() {
-    const { displayModalListFile, setDisplayModalListFile } = useContext(RootLayoutContext);
+    const { displayModalListFile, setDisplayModalListFile, localFileKind } = useContext(RootLayoutContext);
     const { confirm } = useConfirm();
     const { confirmNavigation, runAfterNavigationConfirm } = useNavigationGuard();
     const { notifyError, notifySuccess } = useNotifications();
@@ -42,6 +44,9 @@ export default function LocalFileDialog() {
     const location = useLocation();
     const [documents, setDocuments] = useState([]);
     const [query, setQuery] = useState('');
+    const dialogRef = useRef(null);
+    const close = useCallback(() => setDisplayModalListFile(false), [setDisplayModalListFile]);
+    useModalFocus(dialogRef, displayModalListFile, close);
 
     const refresh = useCallback(() => {
         try {
@@ -58,37 +63,36 @@ export default function LocalFileDialog() {
 
     const filteredDocuments = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase();
-        if (!normalizedQuery) return documents;
-        return documents.filter((document) => document.name.toLowerCase().includes(normalizedQuery));
-    }, [documents, query]);
+        return documents.filter((document) => (!localFileKind || getDocumentKind(document) === localFileKind) && document.name.toLowerCase().includes(normalizedQuery));
+    }, [documents, localFileKind, query]);
 
     if (!displayModalListFile) return null;
 
-    const activeDocumentId = location.pathname.match(/^\/e\/([^/]+)$/)?.[1] || null;
+    const activeDocumentId = location.pathname.match(/^\/(?:e|prisma-to-erd|erd-builder)\/([^/]+)$/)?.[1] || null;
 
-    const close = () => setDisplayModalListFile(false);
-    const openDocument = (id) => {
+    const openDocument = (document) => {
         runAfterNavigationConfirm(() => {
             close();
-            navigate(`/e/${id}`);
+            navigate(getDocumentRoute(document));
         });
     };
     const createNew = () => {
         runAfterNavigationConfirm(() => {
             close();
-            navigate('/e/new');
+            navigate(getDocumentRoute({ id: 'new', kind: localFileKind || FILE_KINDS.SQL_ERD }));
         });
     };
     const removeDocument = async (document) => {
-        if (location.pathname === `/e/${document.id}` && !(await confirmNavigation())) return;
+        const route = getDocumentRoute(document);
+        if (location.pathname === route && !(await confirmNavigation())) return;
         const accepted = await confirm({ title: 'Delete local diagram?', message: `“${document.name}” will be removed from this browser. This cannot be undone.`, confirmText: 'Delete diagram', tone: 'danger' });
         if (!accepted) return;
         try {
             deleteLocalDocument(document.id);
             notifySuccess('The local diagram was deleted.', { title: 'Diagram deleted' });
-            if (location.pathname === `/e/${document.id}`) {
+            if (location.pathname === route) {
                 close();
-                navigate('/e/new', { replace: true });
+                navigate(getDocumentRoute({ id: 'new', kind: getDocumentKind(document) }), { replace: true });
             }
         } catch (error) {
             notifyError(error.message, { title: 'Delete failed' });
@@ -97,7 +101,7 @@ export default function LocalFileDialog() {
 
     return (
         <div className="local-file-dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-            <section className="local-file-dialog" role="dialog" aria-modal="true" aria-labelledby="local-files-title">
+            <section ref={dialogRef} className="local-file-dialog" role="dialog" aria-modal="true" aria-labelledby="local-files-title" tabIndex={-1}>
                 <header className="local-file-dialog-header">
                     <div className="local-file-dialog-title">
                         <span className="local-file-dialog-title-icon"><DiagramIcon /></span>
@@ -129,12 +133,12 @@ export default function LocalFileDialog() {
                         </div>
                     ) : filteredDocuments.map((document) => (
                         <article key={document.id} className={`local-file-dialog-item${activeDocumentId === document.id ? ' is-active' : ''}`} role="listitem">
-                            <button type="button" className="local-file-dialog-open" onClick={() => openDocument(document.id)}>
+                            <button type="button" className="local-file-dialog-open" onClick={() => openDocument(document)}>
                                 <span className="local-file-dialog-name-cell">
                                     <span className="local-file-dialog-file-icon"><DiagramIcon /></span>
                                     <span className="local-file-dialog-name-copy">
                                         <strong>{document.name}</strong>
-                                        <small>{activeDocumentId === document.id ? 'Current diagram' : 'SQL to ERD'}</small>
+                                        <small>{activeDocumentId === document.id ? 'Current diagram' : getDocumentKindLabel(document)}</small>
                                     </span>
                                     {activeDocumentId === document.id && <span className="local-file-dialog-selected">Selected</span>}
                                 </span>

@@ -190,7 +190,7 @@ export default function SqlImportDialog({ isOpen, onClose, onImport, fileRequest
 
                             {report.hasMixedDialects && (
                                 <div className="sql-import-note">
-                                    Multiple SQL dialects were detected. ERD Go can parse the combined workspace, but review dialect-specific diagnostics before saving.
+                                    Multiple SQL dialects were detected. Erd Go can parse the combined workspace, but review dialect-specific diagnostics before saving.
                                 </div>
                             )}
 

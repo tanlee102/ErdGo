@@ -13,15 +13,14 @@ import BookIcon from '@/icons/BookIcon';
 
 // Models that use the user's own API key (user pays for their own quota)
 const USER_API_KEY_MODELS = [
-    { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-
-    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-
+    { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
+    { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
+    { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
     { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash-Lite' },
     { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
-    { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (existing users)' },
+    { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite (existing users)' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (existing users)' },
 ];
 
 export default function ChatInput({
@@ -354,7 +353,7 @@ export default function ChatInput({
                 >
                     <KeyIcon width="20" height="20" />
                 </button>
-                <a href="https://github.com/tanlee102/ErdGo#supported-sql" target="_blank" rel="noopener noreferrer" className="ai-prompt-input__sql-guide-btn" title="SQL Guide">
+                <a href="/docs/sql-to-erd" target="_blank" rel="noopener noreferrer" className="ai-prompt-input__sql-guide-btn" title="SQL Guide">
                     <BookIcon width="14" height="14" />
                     <span>SQL Guide</span>
                 </a>

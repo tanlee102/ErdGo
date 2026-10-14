@@ -1,8 +1,14 @@
-import React, { useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useContext, useState, useMemo, useEffect, useCallback, useRef, useDeferredValue, useImperativeHandle } from 'react';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { ColumnOptionsDropdown } from './ColumnOptionsDropdown';
-import { DIALECTS, DIALECT_BY_ID, DEFAULT_DIALECT_ID, flatTypes, formatDefault } from './dialectConfig';
+import { DIALECTS, DIALECT_BY_ID, DEFAULT_DIALECT_ID, flatTypes } from './dialectConfig';
+import { generateSql, validateAddTableDraft } from './tableModel';
+export { generateColumnLine, generateSql, getAddTableValidationErrors } from './tableModel';
+import { detectEditorSqlDialect } from '@/features/editor/lib/sqlDialectDetection';
+import { sqlToErdSchema } from '@/lib/erdJsonSchema';
+import { identifierKey, identifierPartsFrom, identifierPartsFromText, identifierPartsEquivalent } from '@/lib/sqlIdentifierIdentity';
+import { getSqlDialectProfile } from '@/lib/sqlDialectProfiles';
 
 import './index.css';
 
@@ -13,6 +19,9 @@ import RemoveIcon from '@/icons/RemoveIcon';
 // Add Table — multi-dialect (SQLite / PostgreSQL / MySQL / MSSQL) modal
 // ----------------------------------------------------------------------------
 // Behavior contract:
+//   - Native syntax in the focused tab selects the target database on opening;
+//     neutral tabs inherit the workspace. Manual choices last for this opening
+//     and remain the stored fallback for SQL whose dialect cannot be detected.
 //   - The selected dialect drives identifier quoting, type catalog,
 //     auto-increment syntax, generated-column syntax, FK action support,
 //     and `IF NOT EXISTS` legality.
@@ -20,7 +29,7 @@ import RemoveIcon from '@/icons/RemoveIcon';
 //     into a table-level `PRIMARY KEY (a, b, …)` constraint instead of
 //     inline `PRIMARY KEY` on each column (which most dialects forbid).
 //   - Generated/computed columns suppress DEFAULT / CHECK / FK clauses
-//     because they are mutually exclusive in every supported dialect.
+//     as the form's conservative generation policy; native engines differ.
 //   - Auto-increment normalizes the column type to a dialect-legal integer
 //     (PG: SERIAL/BIGSERIAL; MySQL: keeps INT family + AUTO_INCREMENT;
 //     MSSQL: keeps INT family + IDENTITY(1,1); SQLite: forces `INTEGER`
@@ -29,7 +38,7 @@ import RemoveIcon from '@/icons/RemoveIcon';
 //     it (non-bare or reserved word), so generated SQL stays readable.
 //
 // All emitted SQL round-trips through `parseAst` cleanly — verified by the
-// the end-to-end ERD pipeline and dialect configuration.
+// end-to-end ERD pipeline tests + dialectConfig.test.js.
 // ============================================================================
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -57,7 +66,7 @@ const DEFAULT_COLUMN = {
 };
 
 let nextColumnId = 1;
-const createColumn = () => ({ ...DEFAULT_COLUMN, _id: nextColumnId++ });
+const createColumn = () => ({ ...DEFAULT_COLUMN, references: { ...DEFAULT_COLUMN.references }, _id: nextColumnId++ });
 
 function loadDialect() {
     try {
@@ -77,162 +86,17 @@ function loadDialect() {
 // state into a CREATE TABLE statement for the selected dialect.
 // ────────────────────────────────────────────────────────────────────────────
 
-export function generateColumnLine(col, dialect) {
-    const q = dialect.quoteIdent;
-    const parts = [q(col.name || 'col')];
-
-    // Generated/computed column — special-cased; no default/check/fk allowed.
-    if (col.generated && col.generated.trim()) {
-        parts.push(col.type || 'TEXT');
-        parts.push(dialect.generatedSql(col.generated.trim()));
-        if (col.notNull) parts.push('NOT NULL');
-        return '  ' + parts.join(' ');
-    }
-
-    // Auto-increment column — translate type + suffix per dialect.
-    //
-    // `placement` controls when the suffix is emitted:
-    //   • 'after-type' (default — MySQL/MSSQL): suffix follows the type, e.g.
-    //     `id INT AUTO_INCREMENT PRIMARY KEY`.
-    //   • 'after-pk'   (SQLite):                suffix follows PRIMARY KEY,
-    //     e.g. `id INTEGER PRIMARY KEY AUTOINCREMENT`.
-    //
-    // For SQLite composite-PK columns the inline `PRIMARY KEY` is suppressed,
-    // so the `after-pk` suffix is naturally suppressed too (which is correct —
-    // SQLite forbids AUTOINCREMENT on composite PKs).
-    let aiSuffix = '';
-    let aiPlacement = 'after-type';
-    if (col.autoIncrement) {
-        const ai = dialect.autoIncrement(col.type);
-        parts.push(ai.type);
-        aiSuffix = ai.suffix || '';
-        aiPlacement = ai.placement || 'after-type';
-        if (aiSuffix && aiPlacement === 'after-type') parts.push(aiSuffix);
-    } else {
-        parts.push(col.type || 'TEXT');
-    }
-
-    // Inline PRIMARY KEY only when this is the *single* PK column. Composite
-    // PKs are emitted as a table-level constraint by the caller.
-    if (col.primaryKey && !col._isComposite) {
-        parts.push('PRIMARY KEY');
-        if (aiSuffix && aiPlacement === 'after-pk') parts.push(aiSuffix);
-    }
-    if (col.unique) parts.push('UNIQUE');
-    if (col.notNull && !col.primaryKey) parts.push('NOT NULL'); // PK implies NN
-
-    if (col.defaultValue && !col.autoIncrement) {
-        parts.push(`DEFAULT ${formatDefault(col.defaultValue)}`);
-    }
-
-    if (col.check && col.check.trim()) {
-        parts.push(`CHECK (${col.check.trim()})`);
-    }
-
-    if (col.references?.table && col.references?.column) {
-        parts.push(`REFERENCES ${dialect.quoteIdent(col.references.table)}(${dialect.quoteIdent(col.references.column)})`);
-        if (dialect.supportsFkActions) {
-            if (col.references.onDelete) parts.push(`ON DELETE ${col.references.onDelete}`);
-            if (col.references.onUpdate) parts.push(`ON UPDATE ${col.references.onUpdate}`);
-        }
-    }
-
-    return '  ' + parts.join(' ');
-}
-
-export function generateSql({ tableName, columns, dialect, ifNotExists }) {
-    if (!tableName) return '';
-
-    const q = dialect.quoteIdent;
-    const pkCols = columns.filter((c) => c.primaryKey);
-    const isComposite = pkCols.length >= 2;
-    const taggedCols = columns.map((c) => ({ ...c, _isComposite: isComposite }));
-
-    const colLines = taggedCols.map((c) => generateColumnLine(c, dialect));
-
-    if (isComposite) {
-        const pkList = pkCols.map((c) => q(c.name || 'col')).join(', ');
-        colLines.push(`  PRIMARY KEY (${pkList})`);
-    }
-
-    const tablePart = q(tableName);
-    const head =
-        ifNotExists && dialect.supportsIfNotExists
-            ? `CREATE TABLE IF NOT EXISTS ${tablePart}`
-            : `CREATE TABLE ${tablePart}`;
-
-    let sql = `${head} (\n${colLines.join(',\n')}\n)`;
-    if (dialect.tableSuffix) sql += ` ${dialect.tableSuffix}`;
-    sql += ';';
-
-    // MSSQL `IF NOT EXISTS` translates to a guarded EXEC.
-    if (ifNotExists && !dialect.supportsIfNotExists && dialect.id === 'mssql') {
-        const objId = `OBJECT_ID(N'${tableName.replace(/'/g, "''")}', N'U')`;
-        sql = `IF ${objId} IS NULL\nBEGIN\n${sql}\nEND;`;
-    }
-
-    return sql;
-}
-
-function getColumnLabel(col, index) {
-    const name = typeof col?.name === 'string' ? col.name.trim() : '';
-    return name || `column ${index + 1}`;
-}
-
-export function getAddTableValidationErrors({ columns, dialect }) {
-    const safeColumns = Array.isArray(columns) ? columns : [];
-    const errors = [];
-
-    safeColumns.forEach((col, index) => {
-        const label = getColumnLabel(col, index);
-        const references = col?.references || {};
-        const hasReferenceIntent = Boolean(references.table || references.column || references.onDelete || references.onUpdate);
-        const hasGenerated = Boolean(col?.generated && col.generated.trim());
-
-        if (col?.autoIncrement && !col?.primaryKey) {
-            errors.push(`${label}: auto-increment requires PRIMARY KEY`);
-        }
-
-        if (hasReferenceIntent && !(references.table && references.column)) {
-            errors.push(`${label}: choose both reference table and reference column`);
-        }
-
-        if (hasGenerated) {
-            const hasGeneratedConflict = Boolean(
-                col?.autoIncrement ||
-                col?.primaryKey ||
-                col?.unique ||
-                col?.defaultValue ||
-                col?.check ||
-                references.table ||
-                references.column,
-            );
-            if (hasGeneratedConflict) {
-                errors.push(`${label}: generated columns cannot also use PK, UNIQUE, DEFAULT, CHECK, FK, or auto-increment`);
-            }
-        }
-    });
-
-    if (dialect?.id === 'sqlite') {
-        const primaryKeyColumns = safeColumns.filter((col) => col?.primaryKey);
-        const hasCompositeAutoIncrement = primaryKeyColumns.length >= 2 && primaryKeyColumns.some((col) => col?.autoIncrement);
-        if (hasCompositeAutoIncrement) {
-            errors.push('SQLite AUTOINCREMENT requires a single INTEGER PRIMARY KEY column');
-        }
-    }
-
-    return errors;
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Component
 // ────────────────────────────────────────────────────────────────────────────
 
-export const AddTable = () => {
-    const { schemaRef, sqlInput, setSqlInput, setDisplayModalAddTable, runSqlTabOperation } = useContext(RootLayoutContext);
+export const AddTable = ({ closeRequestRef = null }) => {
+    const { schemaRef, sqlInput, setSqlInput, displayModalAddTable, setDisplayModalAddTable, runSqlTabOperation } = useContext(RootLayoutContext);
     const { confirm } = useConfirm();
 
-    const [dialectId, setDialectId] = useState(loadDialect);
+    const [preferredDialectId, setPreferredDialectId] = useState(loadDialect);
+    const [manualDialectId, setManualDialectId] = useState(null);
+    const [dialectDetection, setDialectDetection] = useState(() => detectEditorSqlDialect(sqlInput));
     const [ifNotExists, setIfNotExists] = useState(false);
     const [tableName, setTableName] = useState('');
     const [columns, setColumns] = useState(() => [createColumn()]);
@@ -240,26 +104,64 @@ export const AddTable = () => {
     const [activeColumnIdx, setActiveColumnIdx] = useState(null);
     const [dropdownAnchorEl, setDropdownAnchorEl] = useState(null);
     const [schemaSnapshot, setSchemaSnapshot] = useState(null);
+    const [sqlContext, setSqlContext] = useState(null);
+    const [submitError, setSubmitError] = useState('');
     const tableNameRef = useRef(null);
+    const cancelPendingRef = useRef(false);
+    const submitPendingRef = useRef(false);
 
+    const detectedDialectId = DIALECT_BY_ID[dialectDetection.id] ? dialectDetection.id : null;
+    const dialectId = manualDialectId || detectedDialectId || preferredDialectId;
     const dialect = DIALECT_BY_ID[dialectId] || DIALECT_BY_ID[DEFAULT_DIALECT_ID];
 
     useEffect(() => {
-        setSchemaSnapshot(schemaRef.current || null);
-    }, [schemaRef, sqlInput]);
+        if (displayModalAddTable === false) {
+            setManualDialectId(null);
+            setActiveColumnIdx(null);
+            setDropdownAnchorEl(null);
+            return;
+        }
+        const detected = runSqlTabOperation?.('getSqlDialectDetection');
+        submitPendingRef.current = false;
+        setDialectDetection(detected?.id ? detected : detectEditorSqlDialect(sqlInput));
+        const context = runSqlTabOperation?.('getAddTableContext');
+        setSqlContext(typeof context?.beforeSql === 'string' ? context : null);
+    }, [displayModalAddTable, runSqlTabOperation, sqlInput]);
 
-    // Persist dialect choice locally so the user picks once.
+    useEffect(() => { setSubmitError(''); }, [tableName, columns, dialectId, ifNotExists]);
+
+    useEffect(() => {
+        setSchemaSnapshot(schemaRef.current || null);
+    }, [schemaRef, sqlInput, displayModalAddTable]);
+
+    const referenceBase = useMemo(() => {
+        const before = sqlContext?.beforeSql ?? sqlInput;
+        const after = dialectId === 'sqlite' ? sqlContext?.afterSql || '' : '';
+        return sqlContext || before?.trim() || after ? sqlToErdSchema(`${before || ''}\n\n${after}`, { dialect: dialectId }) : schemaSnapshot;
+    }, [sqlContext, sqlInput, dialectId, schemaSnapshot]);
+
+    const referenceSchema = useMemo(() => {
+        if (!dropdownAnchorEl) return referenceBase;
+        const sql = sqlContext?.beforeSql ?? sqlInput;
+        const complete = tableName.trim() && columns.every(col => col.name.trim() && (col.type.trim() || col.autoIncrement || col.generated?.trim() && (dialect.computedTypeInferred || dialectId === 'sqlite')));
+        const self = complete ? generateSql({ tableName, columns: columns.map(col => ({ ...col, references: {} })), dialect }) : '';
+        const later = dialectId === 'sqlite' ? sqlContext?.afterSql || '' : '';
+        return sql?.trim() || self || later ? sqlToErdSchema(`${sql || ''}\n\n${self}\n\n${later}`, { dialect: dialectId }) : schemaSnapshot;
+    }, [sqlContext, sqlInput, dialectId, schemaSnapshot, tableName, columns, dialect, dropdownAnchorEl, referenceBase]);
+
+    // Only manual preferences are remembered. Detection from another document
+    // must not overwrite the user's fallback for empty/portable/mixed SQL.
     useEffect(() => {
         try {
-            window.localStorage?.setItem(DIALECT_LS_KEY, dialectId);
+            window.localStorage?.setItem(DIALECT_LS_KEY, preferredDialectId);
             window.localStorage?.setItem(DIALECT_LS_VERSION_KEY, DIALECT_STORAGE_VERSION);
         } catch { /* noop */ }
-    }, [dialectId]);
+    }, [preferredDialectId]);
 
     // ── Type suggestions: dialect catalog ∪ user-defined enums ───────────
     const enumTypes = useMemo(() => {
-        return schemaSnapshot?.enums?.map((e) => e.name) || [];
-    }, [schemaSnapshot]);
+        return referenceBase?.enums?.map((e) => e.name) || [];
+    }, [referenceBase]);
 
     const typeSuggestions = useMemo(() => {
         const dialectTypes = flatTypes(dialect).map((t) => t.value);
@@ -271,13 +173,13 @@ export const AddTable = () => {
         const seen = new Map();
         const dups = new Set();
         for (const c of columns) {
-            const n = (c.name || '').toLowerCase().trim();
+            const n = identifierKey(identifierPartsFromText(dialect.quoteColumn(c.name || '')), dialectId);
             if (!n) continue;
             if (seen.has(n)) dups.add(n);
             else seen.set(n, true);
         }
         return dups;
-    }, [columns]);
+    }, [columns, dialect, dialectId]);
 
     // ── Stable column mutators ───────────────────────────────────────────
     const updateColumn = useCallback((idx, patch) => {
@@ -297,6 +199,8 @@ export const AddTable = () => {
                 }
                 if (patch.primaryKey === false && next.autoIncrement) {
                     next.autoIncrement = false;
+                    next.primaryKey = false;
+                    next.unique = false;
                 }
 
                 // Generated columns can't have DEFAULT/CHECK/FK or be PK/UQ —
@@ -328,6 +232,8 @@ export const AddTable = () => {
     }, []);
 
     const moveColumn = useCallback((idx, dir) => {
+        setActiveColumnIdx(null);
+        setDropdownAnchorEl(null);
         setColumns((prev) => {
             const next = [...prev];
             const target = idx + dir;
@@ -343,23 +249,26 @@ export const AddTable = () => {
         [tableName, columns, dialect, ifNotExists],
     );
 
-    const validationErrors = useMemo(
-        () => getAddTableValidationErrors({ columns, dialect }),
-        [columns, dialect],
+    const validationDraft = useMemo(
+        () => ({ tableName, columns, dialect, ifNotExists, beforeSql: sqlContext?.beforeSql ?? sqlInput, afterSql: sqlContext?.afterSql || '' }),
+        [tableName, columns, dialect, ifNotExists, sqlContext, sqlInput],
     );
+    const deferredDraft = useDeferredValue(validationDraft);
+    const validation = useMemo(() => validateAddTableDraft(deferredDraft), [deferredDraft]);
+    const validationErrors = validation.errors;
 
     const isValid = useMemo(() => {
-        if (!tableName.trim() || tableNameError) return false;
+        if (!tableName.trim() || tableNameError || !validation.ok || deferredDraft !== validationDraft) return false;
         if (columns.length === 0) return false;
         if (dupNames.size > 0) return false;
         if (validationErrors.length > 0) return false;
         return columns.every((col) => {
             if (!col.name.trim()) return false;
             // Generated columns may have an empty type only if expr provided.
-            if (!col.type.trim() && !(col.generated && col.generated.trim())) return false;
+            if (!col.type.trim() && !col.autoIncrement && !(col.generated?.trim() && (dialect.computedTypeInferred || dialect.id === 'sqlite'))) return false;
             return true;
         });
-    }, [tableName, tableNameError, columns, dupNames, validationErrors]);
+    }, [tableName, tableNameError, columns, dupNames, validation, validationErrors, dialect, deferredDraft, validationDraft]);
 
     // ── Form lifecycle ───────────────────────────────────────────────────
     const resetForm = useCallback(() => {
@@ -369,45 +278,63 @@ export const AddTable = () => {
         setDropdownAnchorEl(null);
         setTableNameError('');
         setIfNotExists(false);
+        setSubmitError('');
     }, []);
 
     const handleCancel = useCallback(async () => {
+        if (cancelPendingRef.current) return;
+        if (dropdownAnchorEl) {
+            setActiveColumnIdx(null); setDropdownAnchorEl(null);
+            dropdownAnchorEl.focus(); return;
+        }
         const isModified =
             tableName.trim() !== '' ||
+            ifNotExists ||
             columns.length > 1 ||
-            columns[0].name !== '' ||
-            columns[0].type !== '';
+            columns.some(col => Object.keys(DEFAULT_COLUMN).some(key => JSON.stringify(col[key]) !== JSON.stringify(DEFAULT_COLUMN[key])));
         if (isModified) {
-            const confirmed = await confirm({
+            cancelPendingRef.current = true;
+            let confirmed;
+            try { confirmed = await confirm({
                 title: 'Discard changes?',
                 message: 'Are you sure you want to discard your changes?',
                 confirmText: 'Discard',
                 tone: 'danger',
-            });
+            }); } finally { cancelPendingRef.current = false; }
             if (!confirmed) return;
         }
         resetForm();
         setDisplayModalAddTable(false);
-    }, [tableName, columns, resetForm, setDisplayModalAddTable, confirm]);
+    }, [tableName, columns, ifNotExists, resetForm, setDisplayModalAddTable, confirm, dropdownAnchorEl]);
+
+    useImperativeHandle(closeRequestRef, () => handleCancel, [handleCancel]);
 
     const handleSubmit = useCallback(
         (e) => {
             e.preventDefault();
-            if (!isValid) return;
+            if (!isValid || submitPendingRef.current) return;
+            const current = runSqlTabOperation?.('getAddTableContext');
+            const context = typeof current?.beforeSql === 'string' ? current : { beforeSql: sqlInput, afterSql: '' };
+            const checked = validateAddTableDraft({ tableName, columns, dialect, ifNotExists, ...context });
+            if (!checked.ok) { setSubmitError(checked.errors.join(' ') || 'Complete the table fields.'); setSqlContext(context); return; }
             // In the tab editor, new table SQL belongs in the focused tab. The
             // fallback keeps this modal usable in any older single-SQL surface.
-            const appendedToActiveTab = runSqlTabOperation?.('appendSqlToActiveTab', generatedSql);
-            if (!appendedToActiveTab) {
-                setSqlInput((prev) => (prev ? `${prev}\n\n${generatedSql}` : generatedSql));
+            const appendedToActiveTab = context.revision
+                ? runSqlTabOperation?.('appendSqlToActiveTab', checked.sql, { expectedRevision: context.revision })
+                : runSqlTabOperation?.('appendSqlToActiveTab', checked.sql);
+            if (appendedToActiveTab !== true && appendedToActiveTab !== undefined) { setSubmitError('SQL changed. Check the current table fields and try again.'); return; }
+            submitPendingRef.current = true;
+            if (appendedToActiveTab === undefined) {
+                setSqlInput((prev) => (prev ? `${prev}\n\n${checked.sql}` : checked.sql));
             }
             // New tables are the deliberate exception to the general Auto
             // contrast default: start with adaptive white header/badge text.
             // Choosing Auto later clears this sparse per-table override.
-            runSqlTabOperation?.('applyNewTableDefaults', tableName.trim());
+            runSqlTabOperation?.('applyNewTableDefaults', checked.tableName);
             resetForm();
             setDisplayModalAddTable(false);
         },
-        [isValid, generatedSql, runSqlTabOperation, setSqlInput, setDisplayModalAddTable, resetForm, tableName],
+        [isValid, runSqlTabOperation, setSqlInput, setDisplayModalAddTable, resetForm, tableName, columns, dialect, ifNotExists, sqlInput],
     );
 
     // ── Dropdown plumbing ────────────────────────────────────────────────
@@ -435,11 +362,11 @@ export const AddTable = () => {
             setTableNameError('');
             return;
         }
-        const normalized = tableName.toLowerCase().trim();
-        const existing = schemaSnapshot?.tables || [];
-        const exists = existing.some((t) => t.name.toLowerCase() === normalized);
+        const normalized = identifierPartsFromText(dialect.quoteIdent(tableName));
+        const existing = referenceBase?.tables || [];
+        const exists = existing.some((t) => identifierPartsEquivalent(identifierPartsFrom(t.sourceName || t.fullName || t.name, t.sourceParts), normalized, getSqlDialectProfile(dialectId).defaultSchema, dialectId));
         setTableNameError(exists ? `Table "${tableName}" already exists` : '');
-    }, [tableName, schemaSnapshot]);
+    }, [tableName, referenceBase, dialect, dialectId]);
 
     // ── Outside click + Escape closes the column dropdown ────────────────
     useEffect(() => {
@@ -452,7 +379,7 @@ export const AddTable = () => {
             }
         };
         const onKeyDown = (e) => {
-            if (e.key === 'Escape') closeDropdown();
+            if (e.key === 'Escape' && dropdownAnchorEl) { e.preventDefault(); e.stopPropagation(); closeDropdown(); dropdownAnchorEl.focus(); }
         };
         document.addEventListener('mousedown', onMouseDown);
         document.addEventListener('keydown', onKeyDown);
@@ -460,14 +387,14 @@ export const AddTable = () => {
             document.removeEventListener('mousedown', onMouseDown);
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, [closeDropdown]);
+    }, [closeDropdown, dropdownAnchorEl]);
 
     // ────────────────────────────────────────────────────────────────────
     // Render
     // ────────────────────────────────────────────────────────────────────
 
     const renderColumnRow = (col, idx) => {
-        const isDup = dupNames.has((col.name || '').toLowerCase().trim());
+        const isDup = dupNames.has(identifierKey(identifierPartsFromText(dialect.quoteColumn(col.name || '')), dialectId));
         return (
             <div
                 className={`add-table-column-row${isDup ? ' has-error' : ''}`}
@@ -489,8 +416,9 @@ export const AddTable = () => {
                     <input
                         list="add-table-types"
                         className="add-table-col-type"
-                        placeholder={col.autoIncrement ? 'auto-detected' : col.generated ? '(optional)' : 'data type'}
-                        value={col.type}
+                        placeholder={dialect.computedTypeInferred && col.generated?.trim() ? 'inferred from expression' : col.autoIncrement ? 'auto-detected' : dialectId === 'sqlite' && col.generated ? '(optional)' : 'data type'}
+                        value={dialect.computedTypeInferred && col.generated?.trim() ? '' : col.type}
+                        disabled={Boolean(dialect.computedTypeInferred && col.generated?.trim())}
                         onChange={(e) => updateColumn(idx, { type: e.target.value })}
                         autoComplete="off"
                         spellCheck="false"
@@ -568,8 +496,20 @@ export const AddTable = () => {
                                 type="button"
                                 role="radio"
                                 aria-checked={d.id === dialectId}
+                                tabIndex={d.id === dialectId ? 0 : -1}
                                 className={`add-table-dialect-pill${d.id === dialectId ? ' is-active' : ''}`}
-                                onClick={() => setDialectId(d.id)}
+                                onClick={() => {
+                                    setManualDialectId(d.id);
+                                    setPreferredDialectId(d.id);
+                                }}
+                                onKeyDown={(event) => {
+                                    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+                                    event.preventDefault();
+                                    const current = DIALECTS.findIndex(item => item.id === d.id);
+                                    const index = event.key === 'Home' ? 0 : event.key === 'End' ? DIALECTS.length - 1 : (current + (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) + DIALECTS.length) % DIALECTS.length;
+                                    setManualDialectId(DIALECTS[index].id); setPreferredDialectId(DIALECTS[index].id);
+                                    event.currentTarget.parentElement.querySelectorAll('[role="radio"]')[index]?.focus();
+                                }}
                                 title={`Generate ${d.label} syntax`}
                             >
                                 {d.label}
@@ -585,6 +525,13 @@ export const AddTable = () => {
                         IF NOT EXISTS
                     </label>
                 </div>
+                <div className="add-table-dialect-hint">
+                    {manualDialectId
+                        ? `${dialect.label} selected manually. ${dialectDetection.description}`
+                        : detectedDialectId
+                            ? `${dialectDetection.description} Target Database selected automatically.`
+                            : `${dialectDetection.description} Using ${dialect.label} as the default.`}
+                </div>
             </div>
 
             {/* ── Table Name ────────────────────────────────────────── */}
@@ -598,6 +545,7 @@ export const AddTable = () => {
                             className="add-table-input-name"
                             type="text"
                             value={tableName}
+                            data-modal-autofocus="true"
                             onChange={(e) => setTableName(e.target.value.replace(/\s+/g, '_'))}
                             placeholder="users"
                             required
@@ -642,13 +590,13 @@ export const AddTable = () => {
             </div>
 
             {/* ── SQL Preview ───────────────────────────────────────── */}
-            <div className="add-table-section">
-                <div className="add-table-section-label">
+            <details className="add-table-section add-table-preview-details">
+                <summary className="add-table-section-label" tabIndex={0}>
                     SQL Preview
                     <span className="add-table-dialect-badge">{dialect.label}</span>
-                </div>
+                </summary>
                 <pre className="add-table-sql-preview">{generatedSql || '-- fill in table name and columns above --'}</pre>
-            </div>
+            </details>
 
             {/* ── Actions ───────────────────────────────────────────── */}
             <div className="add-table-actions-row">
@@ -660,12 +608,16 @@ export const AddTable = () => {
                 </button>
             </div>
 
+            {submitError && <div className="add-table-validation-errors" role="alert">{submitError}</div>}
+
             <ColumnOptionsDropdown
                 column={columns[activeColumnIdx] || {}}
                 onUpdate={(patch) => activeColumnIdx !== null && updateColumn(activeColumnIdx, patch)}
                 anchorEl={dropdownAnchorEl}
                 dialect={dialect}
-                schema={schemaSnapshot}
+                schema={referenceSchema}
+                tableName={tableName}
+                onClose={closeDropdown}
             />
         </form>
     );

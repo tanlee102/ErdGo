@@ -227,7 +227,7 @@ export function parseAST(sql, options = {}) {
 
     const ast = { types: [], tables: [], alters: [], indexes: [], drops: [] };
     // Normalize tokenizer errors to the same shape used by parseAst's addError
-    // so downstream consumers (UI and validators) only need to read one
+    // so downstream consumers (UI, tests, validators) only need to read one
     // consistent `position: { line, column, index }` field — tokenizer emits
     // `start: { line, col, idx }`, which is preserved as a fallback.
     const parseErrors = tokenErrors.map((e) => {
@@ -522,13 +522,37 @@ export function parseAST(sql, options = {}) {
         return localIdentifierPartKey(columnPart) === localIdentifierPartKey(requestedPart);
     }
 
+    function indexColumnInfoFromTokenGroup(group) {
+        const info = identifierInfoFromTokenGroup(group);
+        if (!info) return null;
+        const word = (token) => token && !isQuotedIdentifierToken(token) && ['KW', 'IDENT'].includes(token.type) ? String(token.value).toUpperCase() : null;
+        if (['CASE', 'NULL', 'TRUE', 'FALSE', 'CURRENT_DATE', 'CURRENT_TIME', 'CURRENT_TIMESTAMP'].includes(word(group[0]))) return null;
+        let cursor = info.parts.length * 2 - 1;
+        let hasOperatorClass = false;
+        while (cursor < group.length) {
+            const modifier = word(group[cursor]);
+            if (['ASC', 'DESC'].includes(modifier)) cursor += 1;
+            else if (modifier === 'NULLS' && ['FIRST', 'LAST'].includes(word(group[cursor + 1]))) cursor += 2;
+            else if (modifier === 'COLLATE') {
+                const collation = identifierInfoFromTokenGroup(group.slice(cursor + 1));
+                if (!collation) return null;
+                cursor += 1 + collation.parts.length * 2 - 1;
+            } else if (!hasOperatorClass && group[cursor].type === 'IDENT') {
+                // PostgreSQL operator-class names can follow a plain column.
+                const operatorClass = identifierInfoFromTokenGroup(group.slice(cursor));
+                if (!operatorClass) return null;
+                cursor += operatorClass.parts.length * 2 - 1;
+                hasOperatorClass = true;
+            } else return null;
+        }
+        return info;
+    }
+
     function extractExpressionEntriesFromTokens(toks) {
         return splitTopLevelCommaGroups(toks)
             .filter((group) => {
                 if (group.length === 0) return false;
-                if (group[0]?.type === 'PUNC' && group[0]?.value === '(') return true;
-                if (group[1]?.type === 'PUNC' && group[1]?.value === '(') return true;
-                return !identifierNameFromTokenGroup(group);
+                return !indexColumnInfoFromTokenGroup(group);
             })
             .map((group) => tokensToNaturalText(group).trim())
             .filter(Boolean);
@@ -711,7 +735,7 @@ export function parseAST(sql, options = {}) {
     //  "( a > - 1 )". `applyNaturalSpacing` re-collapses operator spacing
     //  to look like the user wrote it: `(a > -1)`.
     //
-    //  Touchy areas (do NOT change without focused parser validation):
+    //  Touchy areas (do NOT change without re-running the test suite):
     //    • Unary `+` / `-` after `(`, `,`, `=` must stick to its operand.
     //    • Binary operators get one space on each side.
     //    • `::cast` should hug the value with no spaces.
@@ -2016,6 +2040,7 @@ export function parseAST(sql, options = {}) {
 
                 const typeParts = [];
                 const rawTypeParts = []; // Keep raw tokens for inline ENUM extraction
+                const declaredTypeStart = this.peek()?.start.idx;
                 let parenDepth = 0;
 
                 while (this.peek()) {
@@ -2056,6 +2081,7 @@ export function parseAST(sql, options = {}) {
                 }
                 const type = applyNaturalSpacing(typeParts.join(' '));
                 const rawType = rawTypeParts.join(''); // Raw type with quotes for ENUM extraction
+                const declaredTypeSql = typeParts.length ? sql.slice(declaredTypeStart, toks[p - 1]?.end.idx) : '';
 
                 // Validate column definition
                 if (!colName) {
@@ -2086,7 +2112,7 @@ export function parseAST(sql, options = {}) {
 
                 // PostgreSQL SERIAL/BIGSERIAL/SMALLSERIAL imply NOT NULL + auto-increment
                 const upperType = (finalType || '').toUpperCase().trim();
-                const isSerial = upperType === 'SERIAL' || upperType === 'BIGSERIAL' || upperType === 'SMALLSERIAL';
+                const isSerial = !/^["`[]/.test(rawTypeParts[0] || '') && ['SERIAL', 'BIGSERIAL', 'SMALLSERIAL'].includes(upperType);
 
                 const column = {
                     name: colName,
@@ -2103,6 +2129,7 @@ export function parseAST(sql, options = {}) {
                     _token: colNameTok,
                 };
                 attachHiddenMeta(column, 'nameParts', colNameInfo ? [colNameInfo] : []);
+                attachHiddenMeta(column, 'declaredTypeSql', declaredTypeSql);
                 while (this.peek()) {
                     const t = this.peek();
                     if (t.type === 'PUNC' && (t.value === ',' || t.value === ')')) break;
@@ -2380,6 +2407,10 @@ export function parseAST(sql, options = {}) {
         const alterStartPos = alterToken ? alterToken.start : null;
 
         consumeIfKeyword('TABLE');
+        // PostgreSQL pg_dump qualifies table-scoped lifecycle statements with
+        // ONLY (for example `ALTER TABLE ONLY public.accounts ...`). ONLY
+        // controls inheritance traversal; it is not part of the table name.
+        consumeIfKeyword('ONLY');
         const tableNameInfo = parseQualifiedIdentifierInfo();
         const tableName = tableNameInfo?.name || null;
         if (!tableName) return;
@@ -2484,6 +2515,7 @@ export function parseAST(sql, options = {}) {
             return tmp.parseColumnDefinitionForEntry();
         };
 
+        let implicitAddColumn = false;
         while (peek()) {
             if (peek().type === 'PUNC' && peek().value === ';') {
                 const semicolonToken = next();
@@ -2497,6 +2529,13 @@ export function parseAST(sql, options = {}) {
 
             const current = peek();
             const currentValue = current?.type === 'KW' ? String(current.value).toUpperCase() : null;
+            if (implicitAddColumn && dialectProfile.id === 'mssql' && current?.type === 'IDENT') {
+                const column = readColumnDefinitionForAlter();
+                if (column) pushAlter({ action: 'add_column', column });
+                implicitAddColumn = consumeClauseSeparator();
+                continue;
+            }
+            implicitAddColumn = false;
 
             if (currentValue === 'ADD') {
                 const addToken = next();
@@ -2575,7 +2614,7 @@ export function parseAST(sql, options = {}) {
                             column,
                         });
                     }
-                    consumeClauseSeparator();
+                    implicitAddColumn = consumeClauseSeparator();
                     continue;
                 }
 
@@ -2930,6 +2969,10 @@ export function parseAST(sql, options = {}) {
             return;
         }
         next(); // TABLE / TYPE / INDEX
+        // PostgreSQL places CONCURRENTLY before IF EXISTS in DROP INDEX:
+        //   DROP INDEX CONCURRENTLY IF EXISTS schema.index_name
+        // It controls locking only and must not become the dropped index name.
+        if (objectKind === 'index') consumeIfIdent('CONCURRENTLY');
         if (consumeIfKeyword('IF')) consumeIfKeyword('EXISTS');
 
         const pending = [];
@@ -3035,9 +3078,9 @@ export function parseAST(sql, options = {}) {
      *   `(a COLLATE "C" ASC, b)`       → ['a', 'b']
      *
      * Algorithm: split tokens at top-level commas, then for each chunk
-     * take the first IDENT/STRING/KW-as-ident token. If the very next
-     * token is `(`, the chunk is a function call and is dropped — there
-     * is no single column to badge.
+     * accept an identifier only when its suffix contains supported index
+     * modifiers. Arithmetic, CASE and qualified function calls are expressions
+     * rather than unique column keys, and are preserved separately.
      */
     function extractIndexColumnsFromTokens(toks) {
         if (!toks || toks.length === 0) return [];
@@ -3056,13 +3099,7 @@ export function parseAST(sql, options = {}) {
         const infos = groups
             .map((g) => {
                 if (g.length === 0) return null;
-                const head = g[0];
-                // Functional/expression entry: `(expr)` — skip.
-                if (head.type === 'PUNC' && head.value === '(') return null;
-                // Function call: `fn ( …` — drop.
-                const second = g[1];
-                if (second && second.type === 'PUNC' && second.value === '(') return null;
-                return identifierInfoFromTokenGroup(g);
+                return indexColumnInfoFromTokenGroup(g);
             })
             .filter(Boolean);
         const names = infos.map((info) => info.name);

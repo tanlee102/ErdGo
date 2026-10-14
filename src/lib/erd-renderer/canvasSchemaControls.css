@@ -1,0 +1,55 @@
+/* Direct field actions and transient previews stay outside exported ERD geometry. */
+.erd-schema-controls { position: absolute; z-index: 18; width: 0; height: 0; color: var(--foreground); }
+.erd-schema-controls[hidden], .erd-schema-row-actions[hidden], .erd-schema-drag-status[hidden] { display: none; }
+.erd-schema-row-actions { position: absolute; left: calc(-1 * var(--erd-table-css-width) - var(--erd-column-action-width)); display: flex; height: var(--erd-column-css-height); }
+.erd-schema-row-actions[data-side='right'] { left: 0; }
+/* The borderless tab extends the canvas row's fill instead of adding a box. */
+.erd-schema-row-actions button { display: grid; place-items: center; box-sizing: border-box; width: var(--erd-column-action-width); height: var(--erd-column-css-height); padding: 0; border: 0; border-radius: 5px 0 0 5px; background: var(--erd-schema-background, var(--background)); color: color-mix(in srgb, var(--erd-schema-text, var(--foreground)) 65%, var(--erd-schema-background, var(--background))); cursor: pointer; }
+.erd-schema-row-actions[data-side='right'] button { border-radius: 0 5px 5px 0; }
+.erd-schema-row-actions svg { width: min(12px, calc(var(--erd-column-css-height) * .55)); height: min(12px, calc(var(--erd-column-css-height) * .55)); pointer-events: none; }
+canvas.erd-schema-edge-hover, canvas.erd-schema-edge-dragging { cursor: crosshair !important; }
+.erd-schema-row-actions .erd-schema-keyboard-connect { position: absolute; left: var(--erd-column-action-width); width: 1px; height: 1px; margin: -1px; clip-path: inset(50%); overflow: hidden; pointer-events: none; }
+.erd-schema-row-actions[data-side='right'] .erd-schema-keyboard-connect { left: auto; right: var(--erd-column-action-width); }
+.erd-schema-row-actions .erd-schema-keyboard-connect:focus { width: 24px; height: 24px; margin: 0; clip-path: none; pointer-events: auto; color: var(--theme-color); }
+.erd-schema-row-actions .erd-schema-remove { opacity: 0; pointer-events: none; transition: opacity .12s; }
+.erd-schema-row-actions[data-hover='true'] .erd-schema-remove, .erd-schema-row-actions .erd-schema-remove:focus { opacity: 1; pointer-events: auto; }
+.erd-schema-row-actions .erd-schema-remove:hover { color: var(--list-file-danger-color, #e05252); background: color-mix(in srgb, var(--list-file-danger-color, #e05252) 6%, var(--erd-schema-background, var(--background))); }
+/* Compact controls keep focus at their edge, without an expanding outer halo. */
+.erd-schema-controls button:focus-visible { outline: 1px solid var(--focus-outline); outline-offset: 0; }
+.erd-schema-controls input:focus-visible, .erd-schema-controls select:focus-visible { outline: none; border-color: var(--focus-outline); box-shadow: none; }
+.erd-schema-add { position: absolute; display: grid; place-items: center; box-sizing: border-box; width: 24px; height: 24px; padding: 4px; border: 1px solid var(--border); background: var(--background); color: var(--foreground); border-radius: 5px; cursor: pointer; }
+.erd-schema-add:hover { border-color: var(--theme-color); color: var(--theme-color); }
+.erd-schema-add svg { width: 14px; height: 14px; pointer-events: none; }
+.erd-schema-inline-form { position: absolute; box-sizing: border-box; padding: 9px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 8px; background: var(--dialog-bg, var(--background)); box-shadow: 0 6px 18px #0002; font-family: inherit; font-size: 12px; line-height: 1.4; color: var(--foreground); }
+.erd-schema-inline-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.erd-schema-inline-title { display: flex; align-items: baseline; gap: 6px; flex: 1; min-width: 0; }
+.erd-schema-inline-title strong { min-width: 0; font-size: 11px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erd-schema-inline-context { color: var(--color-text-secondary); font-size: 10px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.erd-schema-inline-close { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; padding: 4px; border: 0; border-radius: 5px; background: transparent; color: var(--color-text-secondary); cursor: pointer; }
+.erd-schema-inline-close:hover { background: color-mix(in srgb, var(--foreground) 7%, transparent); color: var(--foreground); }
+.erd-schema-inline-close svg { width: 14px; height: 14px; }
+.erd-schema-inline-body { display: flex; align-items: flex-end; gap: 6px; }
+.erd-schema-inline-fields { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); flex: 1; min-width: 0; gap: 6px; }
+.erd-schema-inline-form[data-mode='connection'] .erd-schema-inline-fields { grid-template-columns: minmax(0, 1fr); }
+.erd-schema-inline-field { display: grid; gap: 3px; min-width: 0; }
+.erd-schema-inline-field > span { color: var(--color-text-secondary); font-size: 10px; font-weight: 500; }
+.erd-schema-inline-fields input, .erd-schema-inline-fields select { min-width: 0; width: 100%; height: 28px; box-sizing: border-box; border: 1px solid var(--border); border-radius: 5px; background: var(--background); color: var(--foreground); padding: 5px 7px; font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; transition: border-color .12s; }
+.erd-schema-inline-fields input:hover, .erd-schema-inline-fields select:hover { border-color: color-mix(in srgb, var(--foreground) 25%, var(--border)); }
+.erd-schema-inline-fields input::placeholder { color: var(--color-text-secondary); opacity: .7; }
+.erd-schema-inline-error { margin: 8px 0 0; padding: 7px 8px; border-radius: 5px; background: color-mix(in srgb, var(--list-file-danger-color, #d14747) 7%, transparent); color: var(--list-file-danger-color, #d14747); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.erd-schema-inline-error:empty { display: none; }
+.erd-schema-inline-actions { display: flex; flex: 0 0 auto; }
+.erd-schema-inline-actions button { height: 28px; border: 1px solid transparent; border-radius: 5px; padding: 4px 9px; font: inherit; font-size: 11px; cursor: pointer; background: transparent; color: var(--color-text-secondary); }
+.erd-schema-inline-actions .erd-schema-inline-submit { background: var(--theme-color); border-color: var(--theme-color); color: white; }
+.erd-schema-inline-actions .erd-schema-inline-submit:hover { filter: brightness(.95); }
+@media (max-width: 480px) {
+    .erd-schema-inline-form { padding: 8px; }
+    .erd-schema-inline-fields { grid-template-columns: minmax(0, 1fr); }
+}
+.erd-schema-controls button:disabled { opacity: .45; cursor: default; }
+.erd-schema-drag-preview { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 19; overflow: hidden; display: none; color: #d14747; }
+.erd-schema-drag-preview[data-valid='true'] { color: #26a269; }
+.erd-schema-drag-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-dasharray: 5 3; }
+.erd-schema-drop-target { fill: currentColor; fill-opacity: .12; stroke: currentColor; stroke-width: 2; }
+.erd-schema-drag-status { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); box-sizing: border-box; padding: 7px 10px; border: 1px solid #d14747; border-radius: 6px; background: var(--background); color: var(--foreground); font-size: 12px; pointer-events: none; z-index: 20; }
+.erd-schema-drag-status[data-valid='true'] { border-color: #26a269; }

@@ -8,8 +8,14 @@ export default function RootLayoutProvider({ children }) {
     const [sqlInput, setSqlInput] = useState('');
     const [displayModalAddTable, setDisplayModalAddTable] = useState(false);
     const [displayModalListFile, setDisplayModalListFile] = useState(false);
+    const [localFileKind, setLocalFileKind] = useState(null);
     const schemaRef = useRef(EMPTY_SCHEMA);
     const sqlTabOperationsRef = useRef(null);
+
+    const openTypedFileList = useCallback(({ fileKind } = {}) => {
+        setLocalFileKind(fileKind || null);
+        setDisplayModalListFile(true);
+    }, []);
 
     const registerSqlTabOperations = useCallback((operations) => {
         sqlTabOperationsRef.current = operations;
@@ -32,8 +38,8 @@ export default function RootLayoutProvider({ children }) {
         }
     }, []);
     const value = useMemo(
-        () => ({ sqlInput, setSqlInput, schemaRef, updateSchema, registerSqlTabOperations, runSqlTabOperation, displayModalAddTable, setDisplayModalAddTable, displayModalListFile, setDisplayModalListFile }),
-        [displayModalAddTable, displayModalListFile, registerSqlTabOperations, runSqlTabOperation, sqlInput, updateSchema],
+        () => ({ sqlInput, setSqlInput, schemaRef, updateSchema, registerSqlTabOperations, runSqlTabOperation, displayModalAddTable, setDisplayModalAddTable, displayModalListFile, setDisplayModalListFile, localFileKind, openTypedFileList }),
+        [displayModalAddTable, displayModalListFile, localFileKind, openTypedFileList, registerSqlTabOperations, runSqlTabOperation, sqlInput, updateSchema],
     );
     return <RootLayoutContext.Provider value={value}>{children}</RootLayoutContext.Provider>;
 }

@@ -3,7 +3,7 @@
  *
  * These rules intentionally do not use JavaScript's loose equality or locale
  * comparison: both differ from SQLite for numeric text and BINARY collation.
- * Keep changes aligned with native SQLite semantics.
+ * Keep changes aligned with native SQLite differential tests.
  */
 export function sqliteColumnAffinity(type) {
     const normalized = String(type || '').toUpperCase();
