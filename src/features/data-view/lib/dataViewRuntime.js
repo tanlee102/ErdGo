@@ -4578,6 +4578,82 @@ export function createSqlExecutor(options = {}) {
         //  with INSERT behaviour).
         // ════════════════════════════════════════════════════════════════
 
+        function findUnknownUpdateAssignmentReference(table, assignment) {
+            const expressionTokens = (assignment?.valueTokens || []).filter(Boolean);
+            if (expressionTokens.length === 0) return null;
+
+            // Data View materializes these single-token SQL values itself.
+            // They are not column references even when Query View's SELECT
+            // expression grammar does not recognize a dialect-specific form.
+            if (expressionTokens.length === 1) {
+                const token = expressionTokens[0];
+                const word = tokenWordValue(token);
+                if (
+                    word === 'DEFAULT' ||
+                    word === 'NULL' ||
+                    word === 'TRUE' ||
+                    word === 'FALSE' ||
+                    word === 'CURRENT_TIMESTAMP' ||
+                    word === 'CURRENT_DATE' ||
+                    word === 'CURRENT_TIME' ||
+                    word === 'GETDATE' ||
+                    word === 'NOW' ||
+                    UUID_FN_NAMES.has(word) ||
+                    isQuotedIdentifierValue(token)
+                ) return null;
+            }
+
+            // Query View already owns expression name resolution. Give every
+            // table one synthetic row so it performs binding even when the
+            // user's real table is empty; only unknown-column diagnostics are
+            // consumed here, leaving execution support decisions to Data View.
+            const bindingTables = new Map(Array.from(tables, ([name, candidate]) => [
+                name,
+                {
+                    ...candidate,
+                    rows: [Object.fromEntries((candidate.columns || []).map((column) => [column.name, null]))],
+                },
+            ]));
+            const query = `SELECT ${tokensToSql(expressionTokens)} FROM ${quoteQueryIdentifier(table.name)}`;
+            const result = executeSelectQuery({ tables: bindingTables, query });
+            const error = result.errors?.find((entry) => /Unknown column "/i.test(String(entry?.message || '')));
+            if (!error) return null;
+
+            const match = String(error.message).match(/Unknown column "([^"]+)"/i);
+            const name = match?.[1] || tokensToSql(expressionTokens);
+            const leafName = name.split('.').pop()?.toLowerCase();
+            const token = expressionTokens.find((candidate) =>
+                (candidate.type === 'IDENT' || candidate.type === 'KW') &&
+                String(candidate.value || '').toLowerCase() === leafName,
+            ) || expressionTokens[0];
+            return { name, token };
+        }
+
+        function findUnknownWhereReference(table, whereFilter) {
+            if (!whereFilter || whereFilter.invalid || whereFilter.kind !== 'whereAst') return null;
+
+            const visitValue = (value) => {
+                if (Array.isArray(value)) {
+                    for (const item of value) {
+                        const unknown = visitValue(item);
+                        if (unknown) return unknown;
+                    }
+                    return null;
+                }
+                if (value?.kind === 'columnRef' && !findColumn(table, value.name)) return value;
+                return null;
+            };
+            const visitNode = (node) => {
+                if (!node) return null;
+                if (node.type === 'and' || node.type === 'or') return visitNode(node.left) || visitNode(node.right);
+                if (node.type !== 'condition') return null;
+                if (!findColumn(table, node.column)) return { name: node.column, token: node.columnToken };
+                return visitValue(node.value);
+            };
+
+            return visitNode(whereFilter.ast);
+        }
+
         function parseUpdate() {
             const tableName = parseQualifiedIdent();
             if (!tableName) {
@@ -4599,17 +4675,34 @@ export function createSqlExecutor(options = {}) {
 
             const assignments = [];
             do {
+                const columnToken = peek();
                 const colName = parseIdent();
                 if (!colName) break;
                 if (!(peek() && peek().type === 'OP' && peek().value === '=')) break;
                 next();
-                assignments.push({ column: colName, valueTokens: readUpdateAssignmentTokens() });
+                assignments.push({ column: colName, columnToken, valueTokens: readUpdateAssignmentTokens() });
             } while (peek() && peek().type === 'PUNC' && peek().value === ',' && next());
 
             // Validate columns exist
             const unknownCols = assignments.filter((a) => !findColumn(table, a.column));
             if (unknownCols.length > 0) {
-                unknownCols.forEach((a) => log('warning', `UPDATE "${table.name}": column "${a.column}" does not exist, skipped`));
+                unknownCols.forEach((assignment) => {
+                    log('error', `UPDATE "${table.name}": column "${assignment.column}" does not exist; no rows were applied`, assignment.columnToken);
+                });
+                skipToSemicolon();
+                return;
+            }
+
+            for (const assignment of assignments) {
+                const unknownReference = findUnknownUpdateAssignmentReference(table, assignment);
+                if (!unknownReference) continue;
+                log(
+                    'error',
+                    `UPDATE "${table.name}": column reference "${unknownReference.name}" does not exist in assignment to "${assignment.column}"; no rows were applied`,
+                    unknownReference.token,
+                );
+                skipToSemicolon();
+                return;
             }
 
             // Generated columns are read-only in every supported engine.
@@ -4627,6 +4720,16 @@ export function createSqlExecutor(options = {}) {
 
             const whereFilter = consumeKW('WHERE') ? parseWhereConditions() : null;
             if (whereFilter?.invalid) return;
+            const unknownWhereReference = findUnknownWhereReference(table, whereFilter);
+            if (unknownWhereReference) {
+                log(
+                    'error',
+                    `UPDATE "${table.name}": WHERE column "${unknownWhereReference.name}" does not exist; no rows were applied`,
+                    unknownWhereReference.token,
+                );
+                skipToSemicolon();
+                return;
+            }
 
             if (!whereFilter && table.rows.length > 0) {
                 log('warning', `UPDATE "${table.name}": no WHERE clause — all ${table.rows.length} row(s) will be affected`);
@@ -4787,6 +4890,16 @@ export function createSqlExecutor(options = {}) {
 
             const whereFilter = consumeKW('WHERE') ? parseWhereConditions() : null;
             if (whereFilter?.invalid) return;
+            const unknownWhereReference = findUnknownWhereReference(table, whereFilter);
+            if (unknownWhereReference) {
+                log(
+                    'error',
+                    `DELETE FROM "${table.name}": WHERE column "${unknownWhereReference.name}" does not exist; no rows were applied`,
+                    unknownWhereReference.token,
+                );
+                skipToSemicolon();
+                return;
+            }
 
             if (!whereFilter) {
                 const count = table.rows.length;
@@ -5346,7 +5459,7 @@ export function createSqlExecutor(options = {}) {
             const t = peek();
             if (t?.type === 'IDENT' && !isQuotedIdentifierValue(t)) {
                 next();
-                return { kind: 'columnRef', name: t.value };
+                return { kind: 'columnRef', name: t.value, token: t };
             }
             return parseValue();
         }
@@ -5375,7 +5488,7 @@ export function createSqlExecutor(options = {}) {
                     next();
                     continue;
                 }
-                vals.push(parseValue());
+                vals.push(parseWhereValue());
             }
             return vals;
         }
@@ -5474,9 +5587,16 @@ export function createSqlExecutor(options = {}) {
             const start = peek();
             const col = parseIdent();
             if (!col) return fail('expected column name', start);
+            const condition = (op, value = null) => ({
+                type: 'condition',
+                column: col,
+                columnToken: start,
+                op,
+                value,
+            });
             const opTok = peek();
             if (!opTok || (opTok.type === 'PUNC' && (opTok.value === ';' || opTok.value === ')'))) {
-                return { type: 'condition', column: col, op: 'IS TRUE', value: null };
+                return condition('IS TRUE');
             }
 
             if (opTok.type === 'OP') {
@@ -5484,7 +5604,7 @@ export function createSqlExecutor(options = {}) {
                     return fail(unsupportedOperatorMessage(opTok, 'Data View'), opTok, { unsupported: true });
                 }
                 const op = next().value;
-                return { type: 'condition', column: col, op, value: parseWhereValue() };
+                return condition(op, parseWhereValue());
             }
             if (opTok.type === 'KW' || opTok.type === 'IDENT') {
                 const kw = String(opTok.value).toUpperCase();
@@ -5493,60 +5613,55 @@ export function createSqlExecutor(options = {}) {
                     const negated = consumeKW('NOT');
                     if (consumeKW('DISTINCT')) {
                         if (!consumeKW('FROM')) return fail(`expected FROM after IS ${negated ? 'NOT ' : ''}DISTINCT`, peek());
-                        return {
-                            type: 'condition',
-                            column: col,
-                            op: negated ? 'IS NOT DISTINCT FROM' : 'IS DISTINCT FROM',
-                            value: parseWhereValue(),
-                        };
+                        return condition(negated ? 'IS NOT DISTINCT FROM' : 'IS DISTINCT FROM', parseWhereValue());
                     }
                     if (consumeKW('NULL')) {
-                        return { type: 'condition', column: col, op: negated ? 'IS NOT NULL' : 'IS NULL', value: null };
+                        return condition(negated ? 'IS NOT NULL' : 'IS NULL');
                     }
                     if (consumeKW('TRUE')) {
-                        return { type: 'condition', column: col, op: negated ? 'IS NOT TRUE' : 'IS TRUE', value: null };
+                        return condition(negated ? 'IS NOT TRUE' : 'IS TRUE');
                     }
                     if (consumeKW('FALSE')) {
-                        return { type: 'condition', column: col, op: negated ? 'IS NOT FALSE' : 'IS FALSE', value: null };
+                        return condition(negated ? 'IS NOT FALSE' : 'IS FALSE');
                     }
                     if (consumeKW('UNKNOWN')) {
-                        return { type: 'condition', column: col, op: negated ? 'IS NOT UNKNOWN' : 'IS UNKNOWN', value: null };
+                        return condition(negated ? 'IS NOT UNKNOWN' : 'IS UNKNOWN');
                     }
                     return fail(`expected NULL, TRUE, FALSE, UNKNOWN, or DISTINCT FROM after IS${negated ? ' NOT' : ''}`, peek());
                 }
                 if (kw === 'LIKE' || kw === 'ILIKE') {
                     next();
-                    return { type: 'condition', column: col, op: kw, value: parseWhereValue() };
+                    return condition(kw, parseWhereValue());
                 }
                 if (kw === 'IN') {
                     next();
-                    return { type: 'condition', column: col, op: 'IN', value: parseInList() };
+                    return condition('IN', parseInList());
                 }
                 if (kw === 'BETWEEN') {
                     next();
                     const lo = parseWhereValue();
                     consumeKW('AND');
                     const hi = parseWhereValue();
-                    return { type: 'condition', column: col, op: 'BETWEEN', value: [lo, hi] };
+                    return condition('BETWEEN', [lo, hi]);
                 }
                 if (kw === 'NOT') {
                     const saved = idx;
                     next();
                     if (isKW('IN')) {
                         next();
-                        return { type: 'condition', column: col, op: 'NOT IN', value: parseInList() };
+                        return condition('NOT IN', parseInList());
                     }
                     if (isKW('BETWEEN')) {
                         next();
                         const lo = parseWhereValue();
                         consumeKW('AND');
                         const hi = parseWhereValue();
-                        return { type: 'condition', column: col, op: 'NOT BETWEEN', value: [lo, hi] };
+                        return condition('NOT BETWEEN', [lo, hi]);
                     }
                     if (isKW('LIKE') || isKW('ILIKE')) {
                         const op = peek().value.toUpperCase();
                         next();
-                        return { type: 'condition', column: col, op: `NOT ${op}`, value: parseWhereValue() };
+                        return condition(`NOT ${op}`, parseWhereValue());
                     }
                     idx = saved;
                     return fail('expected IN, BETWEEN, LIKE, or ILIKE after NOT', opTok);

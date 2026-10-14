@@ -1,3 +1,5 @@
+import { FILE_KINDS, getDocumentKind } from './fileDocuments';
+
 export const LOCAL_DOCUMENTS_KEY = 'erdgo:documents:v1';
 export const LOCAL_DOCUMENTS_CHANGED_EVENT = 'erdgo:documents-changed';
 const STORE_VERSION = 1;
@@ -20,6 +22,11 @@ function normalizeDocument(value) {
     if (!value || typeof value !== 'object') return null;
     const id = typeof value.id === 'string' ? value.id.trim() : '';
     if (!id) return null;
+    // Preserve the original SQL record shape; add payloads only for other tools.
+    const kind = getDocumentKind(value);
+    if (!Object.values(FILE_KINDS).includes(kind)) return null;
+    const typed = kind !== FILE_KINDS.SQL_ERD;
+    if (typed && (!value.payload || typeof value.payload !== 'object' || Array.isArray(value.payload))) return null;
     return {
         id,
         name: typeof value.name === 'string' && value.name.trim() ? value.name.trim() : 'untitled',
@@ -27,6 +34,7 @@ function normalizeDocument(value) {
         context: value.context && typeof value.context === 'object' ? cloneJson(value.context, {}) : {},
         createdAt: typeof value.createdAt === 'string' ? value.createdAt : null,
         updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : null,
+        ...(typed ? { kind, payload: cloneJson(value.payload, {}) } : {}),
     };
 }
 
@@ -81,18 +89,26 @@ export function getLocalDocument(id, storage) {
     return document ? cloneJson(document) : null;
 }
 
-export function saveLocalDocument({ id, name, sql, context }, storage) {
+export function saveLocalDocument({ id, name, sql, context, kind = FILE_KINDS.SQL_ERD, payload }, storage) {
     const envelope = readEnvelope(storage);
     const now = new Date().toISOString();
     const normalizedId = typeof id === 'string' && id.trim() ? id.trim() : createDocumentId();
     const existingIndex = envelope.documents.findIndex((document) => document.id === normalizedId);
     const existing = existingIndex >= 0 ? envelope.documents[existingIndex] : null;
-    const document = normalizeDocument({ id: normalizedId, name, sql, context, createdAt: existing?.createdAt || now, updatedAt: now });
+    if (existing && getDocumentKind(existing) !== kind) throw new Error('This diagram belongs to a different ERD tool.');
+    const document = normalizeDocument({ id: normalizedId, name, sql, context, kind, payload, createdAt: existing?.createdAt || now, updatedAt: now });
     if (!document) throw new Error('The local diagram could not be prepared for saving.');
     if (existingIndex >= 0) envelope.documents[existingIndex] = document;
     else envelope.documents.push(document);
     writeEnvelope(envelope, storage);
     return cloneJson(document);
+}
+
+export function getLocalToolDocument(id, expectedKind, storage) {
+    const document = getLocalDocument(id, storage);
+    if (!document) throw new Error('This diagram does not exist in this browser.');
+    if (getDocumentKind(document) !== expectedKind) throw new Error('This diagram belongs to a different ERD tool. Open it from Local diagrams.');
+    return document;
 }
 
 export function deleteLocalDocument(id, storage) {
@@ -106,7 +122,7 @@ export function deleteLocalDocument(id, storage) {
 export function subscribeToLocalDocuments(callback) {
     if (typeof window === 'undefined') return () => {};
     const handleStorage = (event) => {
-        if (!event || event.key === LOCAL_DOCUMENTS_KEY) callback();
+        if (!event || event.key === null || event.key === LOCAL_DOCUMENTS_KEY) callback();
     };
     window.addEventListener('storage', handleStorage);
     window.addEventListener(LOCAL_DOCUMENTS_CHANGED_EVENT, callback);

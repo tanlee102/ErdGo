@@ -31,29 +31,42 @@ function getValidJumpLocation(location, model) {
     return { line, column };
 }
 
-export function syncEditorModelValue(editor, nextValue) {
+export function syncEditorModelValue(editor, nextValue, expectedModelPath = null) {
     const model = editor?.getModel?.();
     if (!model || model.isDisposed?.() || typeof nextValue !== 'string') return false;
+    // A tab switch commits React props before Monaco attaches the next model.
+    // Never write new tab SQL into the old tab's model or undo history.
+    if (expectedModelPath && model.uri?.path !== expectedModelPath) return false;
     if (model.getValue?.() === nextValue) return false;
 
     model.setValue(nextValue);
     return true;
 }
 
-export function listenForEditorModelChanges(editor, getCurrentCode) {
+/** Publish typing before React renders so delayed initialization cannot undo it. */
+export function commitEditorCodeChange(editor, value, expectedModelPath, currentCodeRef, onChange) {
+    const attachedPath = editor?.getModel?.()?.uri?.path;
+    if (attachedPath && attachedPath !== expectedModelPath) return false;
+    const code = typeof value === 'string' ? value : '';
+    currentCodeRef.current = code;
+    onChange(code);
+    return true;
+}
+
+export function listenForEditorModelChanges(editor, getCurrentCode, getModelPath = () => null) {
     return (
         editor?.onDidChangeModel?.(() => {
-            syncEditorModelValue(editor, getCurrentCode());
+            syncEditorModelValue(editor, getCurrentCode(), getModelPath());
         }) || null
     );
 }
 
-export function syncEditorModelOnMount(editor, currentCodeRef) {
-    return syncEditorModelValue(editor, currentCodeRef?.current || '');
+export function syncEditorModelOnMount(editor, currentCodeRef, expectedModelPath = null) {
+    return syncEditorModelValue(editor, currentCodeRef?.current || '', expectedModelPath);
 }
 
-export function scheduleEditorModelSync(editor, getCurrentCode) {
-    const sync = () => syncEditorModelValue(editor, getCurrentCode());
+export function scheduleEditorModelSync(editor, getCurrentCode, getModelPath = () => null) {
+    const sync = () => syncEditorModelValue(editor, getCurrentCode(), getModelPath());
     sync();
 
     // Monaco can attach its cached tab model after React has committed the
@@ -124,6 +137,7 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
     const jumpDecorationsRef = useRef(null);
     const showAiSuggestionsRef = useRef(showAiSuggestions);
     const currentCodeRef = useRef('');
+    const modelPathRef = useRef(null);
     const modelChangeListenerRef = useRef(null);
     const mountModelSyncCleanupRef = useRef(null);
     const previewViewStatesRef = useRef(new Map());
@@ -180,11 +194,11 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
-        syncEditorModelOnMount(editor, currentCodeRef);
+        syncEditorModelOnMount(editor, currentCodeRef, modelPathRef.current);
         mountModelSyncCleanupRef.current?.();
-        mountModelSyncCleanupRef.current = scheduleEditorModelSync(editor, () => currentCodeRef.current);
+        mountModelSyncCleanupRef.current = scheduleEditorModelSync(editor, () => currentCodeRef.current, () => modelPathRef.current);
         modelChangeListenerRef.current?.dispose?.();
-        modelChangeListenerRef.current = listenForEditorModelChanges(editor, () => currentCodeRef.current);
+        modelChangeListenerRef.current = listenForEditorModelChanges(editor, () => currentCodeRef.current, () => modelPathRef.current);
         window.monaco = monaco;
         setIsEditorReady(true);
         monaco.languages.setLanguageConfiguration('sql', languageConfiguration);
@@ -418,8 +432,9 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
     // immediately rather than waiting for a tab switch to replace its model.
     useLayoutEffect(() => {
         currentCodeRef.current = currentCode || '';
-        return scheduleEditorModelSync(editorRef.current, () => currentCodeRef.current);
-    }, [currentCode, editorPath, showAiSuggestions]);
+        modelPathRef.current = modelPath;
+        return scheduleEditorModelSync(editorRef.current, () => currentCodeRef.current, () => modelPathRef.current);
+    }, [currentCode, modelPath]);
 
     return (
         <div className="editor-container">
@@ -431,14 +446,12 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
                 height="100%"
                 language="sql"
                 path={modelPath}
-                theme={theme === 'dark' ? 'vs-dark' : 'vs'}
                 value={currentCode}
                 onChange={(value) => {
-                    if (!showAiSuggestions) {
-                        setSqlInput(value || '');
-                    }
+                    if (!showAiSuggestions) commitEditorCodeChange(editorRef.current, value, modelPathRef.current, currentCodeRef, setSqlInput);
                 }}
                 onMount={handleEditorDidMount}
+                theme={theme === 'dark' ? 'vs-dark' : 'vs'}
                 options={{
                     ...monacoOptions,
                     readOnly: showAiSuggestions || currentlyProcessingAi,

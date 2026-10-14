@@ -14,7 +14,7 @@ import ActionsMenuIcon from '@/icons/ActionsMenuIcon';
 
 export default function SqlHeader({ disabled = false, onImportSql }) {
     const navigate = useNavigate();
-    const { sqlInput, setSqlInput, setDisplayModalListFile } = useContext(RootLayoutContext);
+    const { sqlInput, setSqlInput, setDisplayModalListFile, openTypedFileList } = useContext(RootLayoutContext);
     const { confirm } = useConfirm();
     const { runAfterNavigationConfirm } = useNavigationGuard();
     const [showActionsMenu, setShowActionsMenu] = useState(false);
@@ -93,7 +93,7 @@ export default function SqlHeader({ disabled = false, onImportSql }) {
                     <button type="button" className="logo-homepage" title="ERD Go home" aria-label="ERD Go home" disabled={disabled} onClick={handleHome}>
                             <HomeIcon />
                     </button>
-                    <button type="button" className="btn-list-sql" title="Local diagrams" aria-label="Open local diagrams" onClick={() => setDisplayModalListFile(true)}>
+                    <button type="button" className="btn-list-sql" title="Local diagrams" aria-label="Open local diagrams" onClick={() => openTypedFileList ? openTypedFileList() : setDisplayModalListFile(true)}>
                             <ListIcon />
                     </button>
                 </div>

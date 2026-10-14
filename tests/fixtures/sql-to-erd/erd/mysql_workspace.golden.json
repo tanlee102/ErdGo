@@ -1,0 +1,221 @@
+{
+  "enums": [
+    {
+      "name": "status_enum",
+      "values": [
+        "trial",
+        "active",
+        "locked"
+      ]
+    },
+    {
+      "name": "flags_set",
+      "values": [
+        "billing",
+        "sso",
+        "audit"
+      ]
+    },
+    {
+      "name": "role_enum",
+      "values": [
+        "owner",
+        "admin",
+        "member",
+        "viewer"
+      ]
+    },
+    {
+      "name": "permissions_set",
+      "values": [
+        "read",
+        "write",
+        "delete"
+      ]
+    }
+  ],
+  "composites": [],
+  "tables": [
+    {
+      "name": "workspaces",
+      "columns": [
+        {
+          "name": "id",
+          "type": "BIGINT UNSIGNED",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "slug",
+          "type": "VARCHAR(64)",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "status",
+          "type": "status_enum",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [
+            "DEFAULT 'trial'"
+          ],
+          "compositeIdx": true
+        },
+        {
+          "name": "flags",
+          "type": "flags_set",
+          "constraints": [],
+          "extras": [
+            "DEFAULT 'billing'"
+          ]
+        },
+        {
+          "name": "created_at",
+          "type": "DATETIME",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [
+            "DEFAULT CURRENT_TIMESTAMP"
+          ],
+          "compositeIdx": true
+        }
+      ]
+    },
+    {
+      "name": "memberships",
+      "columns": [
+        {
+          "name": "workspace_id",
+          "type": "BIGINT UNSIGNED",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "fk": true,
+          "compositePk": true
+        },
+        {
+          "name": "user_id",
+          "type": "BIGINT UNSIGNED",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "compositePk": true
+        },
+        {
+          "name": "role",
+          "type": "role_enum",
+          "constraints": [
+            "NN",
+            "UQ"
+          ],
+          "extras": [
+            "DEFAULT 'viewer'"
+          ],
+          "compositeUq": true
+        },
+        {
+          "name": "permissions",
+          "type": "permissions_set",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT 'read'"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "api_keys",
+      "columns": [
+        {
+          "name": "workspace_id",
+          "type": "BIGINT UNSIGNED",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "fk": true,
+          "compositePk": true
+        },
+        {
+          "name": "key",
+          "type": "VARCHAR(128)",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "compositePk": true
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR(100)",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": []
+        },
+        {
+          "name": "name_lc",
+          "type": "VARCHAR(100)",
+          "constraints": [],
+          "extras": [
+            "GENERATED ALWAYS AS (LOWER(name)) VIRTUAL"
+          ]
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": {
+        "table": "api_keys",
+        "column": "workspace_id"
+      },
+      "to": {
+        "table": "workspaces",
+        "column": "id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_keys_workspace"
+    },
+    {
+      "from": {
+        "table": "memberships",
+        "column": "workspace_id"
+      },
+      "to": {
+        "table": "workspaces",
+        "column": "id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_members_workspace",
+      "actions": {
+        "onDelete": "CASCADE"
+      }
+    }
+  ],
+  "diagnostics": []
+}

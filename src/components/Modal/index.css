@@ -1,0 +1,113 @@
+/* The Modal (background) */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 5000; /* Sit on top */ /* Location of the box */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0, 0, 0, 0.524); /* Black w/ opacity */
+}
+
+/* Modal Content */
+.modal-content {
+    z-index: 3;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--dialog-bg);
+    margin: auto;
+    margin-top: 30px;
+    margin-bottom: 30px;
+    padding: 0;
+    border-radius: 3px;
+    /* overflow: hidden; */
+    max-width: 650px;
+    box-shadow:
+        0 4px 8px 0 rgba(0, 0, 0, 0.2),
+        0 6px 20px 0 rgba(0, 0, 0, 0.19);
+    -webkit-animation-name: animatetop;
+    -webkit-animation-duration: 0.4s;
+    animation-name: animatetop;
+    animation-duration: 0.4s;
+}
+
+@media (max-width: 650px) {
+    .modal-content {
+        width: 100%;
+    }
+}
+
+/* Add Animation */
+@-webkit-keyframes animatetop {
+    from {
+        top: -300px;
+        opacity: 0;
+    }
+    to {
+        top: 0;
+        opacity: 1;
+    }
+}
+@keyframes animatetop {
+    from {
+        top: -300px;
+        opacity: 0;
+    }
+    to {
+        top: 0;
+        opacity: 1;
+    }
+}
+
+/* The Close Button */
+.close-modal {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--color-text);
+    float: right;
+    font-size: 1.4em;
+    font-weight: bold;
+}
+.close-modal:hover,
+.close-modal:focus {
+    color: var(--color-text);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.modal-header {
+    padding: 6px 13px;
+    border-bottom: 1px solid var(--dialog-bdr);
+    color: black;
+    display: flex;
+    justify-items: center;
+}
+.modal-header div {
+    float: left;
+    text-align: left;
+    width: 100%;
+    font-size: normal;
+    font-weight: bold;
+    margin-top: auto;
+    margin-bottom: auto;
+    color: var(--foreground);
+}
+
+.modal-body {
+    padding: 10px 0px;
+    float: left;
+    width: 100%;
+}
+
+.modal-footer {
+    position: relative;
+    float: left;
+    padding: 5px 5px;
+    width: 100%;
+    border-top: 1px solid var(--dialog-bdr);
+    color: black;
+}

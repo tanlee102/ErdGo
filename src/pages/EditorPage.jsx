@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { ThemeContext } from '@/contexts/ThemeContext';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import useSplitter from '@/features/editor/hooks/useSplitter';
@@ -17,6 +17,7 @@ import { useSqlTabs } from '@/features/editor/hooks/useSqlTabs';
 import { useUnsavedChangesWarning } from '@/features/files/hooks/useUnsavedChangesWarning';
 import { sampleDataSQL, sampleSchemaSQL } from '@/features/editor/lib/sampleSQL';
 import { createSqlTab } from '@/features/editor/lib/sqlTabs';
+import { readSqlEditorTransfer } from '@/features/editor/lib/sqlEditorTransfer';
 import { getAiWorkingWorkspace } from '@/features/editor/lib/aiWorkingWorkspace';
 import { createSqlExecutor } from '@/features/data-view/lib/sqlExecutor';
 import TableViewer from '@/features/data-view/components/TableViewer';
@@ -59,6 +60,8 @@ const BLANK_SCHEMA_STARTER = `-- Start your database schema here.
 export default function EditorPage() {
     // Get index from params
     const { index } = useParams();
+    const location = useLocation();
+    const initialDocument = useMemo(() => index === 'new' ? readSqlEditorTransfer(location.state) : null, [index, location.state]);
 
     // Contexts
     const { theme, toggleTheme } = useContext(ThemeContext);
@@ -84,20 +87,23 @@ export default function EditorPage() {
         setViewMode(mode);
     }, []);
 
-    const erdData = useErdData(index);
+    const erdData = useErdData(index, initialDocument);
     useEffect(() => {
         document.title = `${erdData.fileName || 'Untitled'} — ERD Go`;
     }, [erdData.fileName]);
 
     // Show dialog when index is 'new' and not shown before
     useEffect(() => {
-        if (index === 'new' && !dialogShown) {
+        if (initialDocument) {
+            setShowCreateDialog(false);
+            setDialogShown(true);
+        } else if (index === 'new' && !dialogShown) {
             setShowCreateDialog(true);
             setDialogShown(true);
         } else if (index !== 'new') {
             setDialogShown(false);
         }
-    }, [index, dialogShown]);
+    }, [index, dialogShown, initialDocument]);
 
     // ERD Rendering - must be before splitter to use setErdContextVersion
     const erdRendering = useErdRendering({
@@ -138,6 +144,11 @@ export default function EditorPage() {
         // labels all come through this narrow bridge.
         const unregister = registerSqlTabOperations({
             appendSqlToActiveTab: sqlTabs.appendSqlToActiveTab,
+            getSqlDialectDetection: sqlTabs.getSqlDialectDetection,
+            getAddTableContext: sqlTabs.getAddTableContext,
+            editCanvasSchema: sqlTabs.editCanvasSchema,
+            getRelationshipReconnectTargets: sqlTabs.getRelationshipReconnectTargets,
+            reconnectRelationship: sqlTabs.reconnectRelationship,
             applyNewTableDefaults: erdRendering.applyNewTableDefaults,
             deleteTableFromTabs: sqlTabs.deleteTableFromTabs,
             getTableOwner: sqlTabs.getTableOwner,
@@ -146,7 +157,7 @@ export default function EditorPage() {
         });
         setFlag((flag) => flag + 1);
         return unregister;
-    }, [registerSqlTabOperations, setFlag, erdRendering.applyNewTableDefaults, sqlTabs.appendSqlToActiveTab, sqlTabs.deleteTableFromTabs, sqlTabs.getTableOwner, sqlTabs.getTableOwners, sqlTabs.getTableDeletionPreview]);
+    }, [registerSqlTabOperations, setFlag, erdRendering.applyNewTableDefaults, sqlTabs.appendSqlToActiveTab, sqlTabs.getSqlDialectDetection, sqlTabs.getAddTableContext, sqlTabs.editCanvasSchema, sqlTabs.getRelationshipReconnectTargets, sqlTabs.reconnectRelationship, sqlTabs.deleteTableFromTabs, sqlTabs.getTableOwner, sqlTabs.getTableOwners, sqlTabs.getTableDeletionPreview]);
 
     // Connect ERD jump-to-table to Monaco editor
     useEffect(() => {
@@ -395,11 +406,12 @@ export default function EditorPage() {
     };
 
     // Data/query view executor — only runs when a table-backed view is active
+    const isTableBackedView = viewMode === 'data' || viewMode === 'query';
     const dataViewResult = useMemo(() => {
-        if (viewMode !== 'data' && viewMode !== 'query') return null;
+        if (!isTableBackedView) return null;
         const executor = createSqlExecutor();
         return executor.execute(aiWorkingWorkspace.sql);
-    }, [aiWorkingWorkspace.sql, viewMode]);
+    }, [aiWorkingWorkspace.sql, isTableBackedView]);
 
     useEffect(() => {
         setQueryExecutionState({ ...EMPTY_QUERY_EXECUTION_STATE, schemaKey: querySchemaKey });
@@ -419,8 +431,8 @@ export default function EditorPage() {
 
     const dataContent = useMemo(() => {
         if (!dataViewResult) return null;
-        return <TableViewer tables={new Map(dataViewResult.tables)} types={new Map(dataViewResult.types)} executionLog={dataViewResult.log} />;
-    }, [dataViewResult]);
+        return <TableViewer key={index} tables={new Map(dataViewResult.tables)} types={new Map(dataViewResult.types)} executionLog={dataViewResult.log} />;
+    }, [dataViewResult, index]);
 
     const queryContent = useMemo(
         () => (

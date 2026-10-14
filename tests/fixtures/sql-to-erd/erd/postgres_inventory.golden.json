@@ -1,0 +1,221 @@
+{
+  "enums": [
+    {
+      "name": "stock_state",
+      "values": [
+        "pending",
+        "available",
+        "reserved",
+        "scrapped"
+      ]
+    }
+  ],
+  "composites": [
+    {
+      "name": "measurement",
+      "fields": [
+        {
+          "name": "value",
+          "type": "NUMERIC(12, 4)"
+        },
+        {
+          "name": "unit",
+          "type": "TEXT"
+        }
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "name": "locations",
+      "columns": [
+        {
+          "name": "tenant_id",
+          "type": "BIGINT",
+          "constraints": [
+            "PK",
+            "UQ"
+          ],
+          "extras": [],
+          "pk": true,
+          "compositePk": true,
+          "compositeUq": true
+        },
+        {
+          "name": "location_id",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "compositePk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "code",
+          "type": "TEXT",
+          "constraints": [
+            "UQ",
+            "NN"
+          ],
+          "extras": [],
+          "compositeUq": true
+        },
+        {
+          "name": "state",
+          "type": "stock_state",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [
+            "DEFAULT 'available'",
+            "chk_locations_state: CHECK (state <> 'scrapped' OR attrs IS NOT NULL)"
+          ],
+          "compositeIdx": true
+        },
+        {
+          "name": "capacity",
+          "type": "measurement",
+          "constraints": [],
+          "extras": []
+        },
+        {
+          "name": "attrs",
+          "type": "JSONB",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [
+            "DEFAULT jsonb_build_object('zone', 'default')",
+            "chk_locations_state: CHECK (state <> 'scrapped' OR attrs IS NOT NULL)"
+          ]
+        },
+        {
+          "name": "search_key",
+          "type": "TEXT",
+          "constraints": [],
+          "extras": [
+            "GENERATED ALWAYS AS (lower(code)) STORED"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "inventory_lots",
+      "columns": [
+        {
+          "name": "tenant_id",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true,
+          "fk": true,
+          "compositePk": true
+        },
+        {
+          "name": "lot_id",
+          "type": "BIGINT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [
+            "AUTO_INCREMENT"
+          ],
+          "pk": true,
+          "compositePk": true,
+          "autoIncrement": true
+        },
+        {
+          "name": "location_id",
+          "type": "BIGINT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        },
+        {
+          "name": "sku",
+          "type": "TEXT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": []
+        },
+        {
+          "name": "qty",
+          "type": "NUMERIC",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [
+            "CHECK (qty >= 0)"
+          ],
+          "compositeIdx": true
+        },
+        {
+          "name": "state",
+          "type": "stock_state",
+          "constraints": [
+            "NN",
+            "IDX"
+          ],
+          "extras": [
+            "DEFAULT 'pending'"
+          ],
+          "compositeIdx": true
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": {
+        "table": "inventory_lots",
+        "column": "location_id"
+      },
+      "to": {
+        "table": "locations",
+        "column": "location_id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_lots_location",
+      "actions": {
+        "deferrable": true,
+        "initially": "DEFERRED"
+      }
+    },
+    {
+      "from": {
+        "table": "inventory_lots",
+        "column": "tenant_id"
+      },
+      "to": {
+        "table": "locations",
+        "column": "tenant_id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "fkName": "fk_lots_location",
+      "actions": {
+        "deferrable": true,
+        "initially": "DEFERRED"
+      }
+    }
+  ],
+  "diagnostics": [
+    {
+      "kind": null,
+      "severity": "warning",
+      "message": "Expression index entries are preserved but are not projected as column index badges."
+    }
+  ]
+}

@@ -1,7 +1,5 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useContext, useMemo } from 'react';
-import { RootLayoutContext } from '@/contexts/RootLayoutContext';
-import { extractTablesInfo } from '@/utils/tableUtils';
-import { FK_ACTIONS } from './dialectConfig';
+import React, { useLayoutEffect, useRef, useState, useMemo } from 'react';
+import { getAddTableReferenceTargets } from './tableModel';
 
 import './index.css';
 
@@ -12,30 +10,14 @@ import './index.css';
 // This component never branches on dialect.id directly.
 // ============================================================================
 
-export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, schema = null }) => {
-    const { sqlInput } = useContext(RootLayoutContext);
-
-    const [tables, setTables] = useState([]);
+export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, schema = null, onClose, tableName = '' }) => {
+    const tables = useMemo(() => anchorEl ? getAddTableReferenceTargets({ schema, column, dialect, tableName }) : [], [anchorEl, schema, column, dialect, tableName]);
     const [position, setPosition] = useState(null);
 
     const dropdownRef = useRef(null);
 
-    // ── Tables available for FK references ──────────────────────────────
-    useEffect(() => {
-        if (!sqlInput && !schema) {
-            setTables([]);
-            return;
-        }
-
-        const tablesInfo = extractTablesInfo(sqlInput || '', schema);
-        setTables(tablesInfo);
-
-        // If the previously-selected FK target table no longer exists,
-        // reset it so we don't ship stale references.
-        if (column.references?.table && !tablesInfo.some((t) => t.name === column.references?.table)) {
-            onUpdate({ references: { table: '', column: '', onDelete: '', onUpdate: '' } });
-        }
-    }, [sqlInput, column.references?.table, onUpdate, schema]);
+    // Invalidated choices stay visible until corrected; validation blocks
+    // insertion instead of silently discarding the user's foreign-key intent.
 
     // ── Enum value preview (read-only — informational chip) ─────────────
     const enumValues = useMemo(() => {
@@ -99,7 +81,7 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
             window.removeEventListener('resize', onScrollResize);
             window.removeEventListener('scroll', onScrollResize, true);
         };
-    }, [anchorEl]);
+    }, [anchorEl, column._id, tables, enumValues.length, column.references?.table, column.references?.column]);
 
     if (!anchorEl) return null;
 
@@ -122,14 +104,16 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
                 pointerEvents: 'auto',
             }}
             role="dialog"
+            aria-label={`Options for column ${column.name || 'new column'}`}
             aria-hidden={!position}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose?.(); anchorEl.focus(); } }}
         >
             <div className="add-table-dropdown-content">
                 {/* ── Constraints ── */}
                 <div className="add-table-constraint-group">
                     <label
-                        className={`add-table-small-check${column.notNull ? ' is-checked' : ''}${hasGenerated ? ' is-disabled' : ''}`}
+                        className={`add-table-small-check${column.notNull ? ' is-checked' : ''}`}
                         title="NOT NULL"
                     >
                         <input
@@ -297,6 +281,7 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
 
                     <div className="add-table-fk-row">
                         <select
+                            aria-label="Reference table"
                             value={column.references?.table || ''}
                             onChange={(e) =>
                                 onUpdate({
@@ -313,20 +298,23 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
                             disabled={hasGenerated}
                         >
                             <option value="">— Reference table —</option>
+                            {column.references?.table && !tables.some(t => t.value === column.references.table) && <option value={column.references.table} disabled>{column.references.table} · unavailable</option>}
                             {tables.map((table) => (
-                                <option key={table.name} value={table.name}>
+                                <option key={table.value} value={table.value}>
                                     {table.name}
                                 </option>
                             ))}
                         </select>
 
                         <select
+                            aria-label="Reference column"
                             value={column.references?.column || ''}
                             onChange={(e) =>
                                 onUpdate({
                                     references: {
                                         table: column.references?.table || '',
                                         column: e.target.value,
+                                        columnQuoted: tables.find(t => t.value === column.references?.table)?.columns.find(c => c.name === e.target.value)?.nameParts?.[0]?.quoted === true,
                                         onDelete: column.references?.onDelete || '',
                                         onUpdate: column.references?.onUpdate || '',
                                     },
@@ -337,11 +325,12 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
                             onClick={(e) => e.stopPropagation()}
                         >
                             <option value="">— Reference column —</option>
+                            {column.references?.column && !tables.find(t => t.value === column.references?.table)?.columns.some(c => c.name === column.references.column) && <option value={column.references.column} disabled>{column.references.column} · unavailable</option>}
                             {tables
-                                .find((t) => t.name === column.references?.table)
-                                ?.columns.map((colName) => (
-                                    <option key={colName} value={colName}>
-                                        {colName}
+                                .find((t) => t.value === column.references?.table)
+                                ?.columns.map((target) => (
+                                    <option key={target.name} value={target.name}>
+                                        {target.name} · {target.type}
                                     </option>
                                 ))}
                         </select>
@@ -350,6 +339,7 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
                     {isFkSet && dialect.supportsFkActions && (
                         <div className="add-table-fk-actions">
                             <select
+                                aria-label="On delete"
                                 value={column.references?.onDelete || ''}
                                 onChange={(e) =>
                                     onUpdate({
@@ -360,13 +350,15 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <option value="">ON DELETE …</option>
-                                {FK_ACTIONS.map((a) => (
+                                {column.references?.onDelete && !dialect.fkActions.includes(column.references.onDelete) && <option value={column.references.onDelete} disabled>ON DELETE {column.references.onDelete} · unsupported</option>}
+                                {dialect.fkActions.map((a) => (
                                     <option key={a} value={a}>
                                         ON DELETE {a}
                                     </option>
                                 ))}
                             </select>
                             <select
+                                aria-label="On update"
                                 value={column.references?.onUpdate || ''}
                                 onChange={(e) =>
                                     onUpdate({
@@ -377,7 +369,8 @@ export const ColumnOptionsDropdown = ({ column, onUpdate, anchorEl, dialect, sch
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 <option value="">ON UPDATE …</option>
-                                {FK_ACTIONS.map((a) => (
+                                {column.references?.onUpdate && !dialect.fkActions.includes(column.references.onUpdate) && <option value={column.references.onUpdate} disabled>ON UPDATE {column.references.onUpdate} · unsupported</option>}
+                                {dialect.fkActions.map((a) => (
                                     <option key={a} value={a}>
                                         ON UPDATE {a}
                                     </option>

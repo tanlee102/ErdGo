@@ -68,8 +68,9 @@
 }
 
 @keyframes relationshipSuggestionsIn {
-    from { opacity: 0; transform: translateX(8px) scale(0.98); }
-    to { opacity: 1; transform: translateX(0) scale(1); }
+    /* Keep the panel's measured height stable so its button anchor does not jump during entry. */
+    from { opacity: 0; transform: translateX(8px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 .relationship-suggestions-section {

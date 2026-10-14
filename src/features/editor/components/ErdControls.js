@@ -10,8 +10,9 @@ import AddSquareIcon from '@/icons/AddSquareIcon';
 import ListIcon from '@/icons/ListIcon';
 import AutoColorOnlyIcon from '@/icons/AutoColorOnlyIcon';
 import RelationshipSuggestionsPanel from './RelationshipSuggestionsPanel';
+import ErdControlHelp from './ErdControlHelp';
 
-export default function ErdControls({ erdRendering, showTableOwnerLabels = false, onShowTableOwnerLabelsChange }) {
+export default function ErdControls({ erdRendering, showTableOwnerLabels = false, onShowTableOwnerLabelsChange, canEditSchema = true }) {
     const { setDisplayModalAddTable } = useContext(RootLayoutContext);
     const erdHealthButtonRef = useRef(null);
     const relationshipInference = erdRendering?.relationshipInference;
@@ -22,15 +23,15 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
     const erdHealthLabel = hasSchemaScore ? `Open ERD health, score ${schemaQuality.score} out of 100, ${schemaQuality.label}${suggestionLabel}` : 'ERD health is not available until the schema has a table';
 
     return (
-        <div id="erd-controls">
-            <button className="erd-btn" id="zoom-in" title="Zoom In">
+        <ErdControlHelp id="erd-controls">
+            <button className="erd-btn" id="zoom-in" aria-label="Zoom In" data-erd-help="Zoom in for a closer look">
                 +
             </button>
-            <button className="erd-btn" id="zoom-out" title="Zoom Out">
+            <button className="erd-btn" id="zoom-out" aria-label="Zoom Out" data-erd-help="Zoom out to see more tables">
                 −
             </button>
 
-            <button className="erd-btn" id="fit-btn" title="Fit to Screen">
+            <button className="erd-btn" id="fit-btn" aria-label="Fit to Screen" data-erd-help="Fit the whole diagram on screen">
                 <FitScreenIcon />
             </button>
 
@@ -40,13 +41,14 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
                 type="button"
                 aria-pressed={erdRendering.fullConnect === true}
                 onClick={() => erdRendering.setFullConnect(erdRendering.fullConnect !== true)}
-                title="Toggle Full Connect"
+                aria-label="Toggle Full Connect"
+                data-erd-help={erdRendering.fullConnect === true ? 'Fade idle connection lines' : 'Keep all connection lines visible'}
             >
                 <FullConnectIcon />
             </button>
 
             <div className="erd-control-popover">
-                <button className="erd-btn" id="layout-mode-btn" type="button" title="Layout Mode: Left to Right" aria-haspopup="dialog" aria-controls="layout-popup" aria-expanded="false">
+                <button className="erd-btn" id="layout-mode-btn" type="button" aria-label="Layout Mode: Left to Right" data-erd-help="Rearrange tables with an automatic layout" aria-haspopup="dialog" aria-controls="layout-popup" aria-expanded="false">
                     <span id="layout-mode-label">LR</span>
                 </button>
                 <div id="layout-popup" role="dialog" aria-label="Layout mode">
@@ -68,8 +70,8 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
                     className={`erd-btn erd-btn--toggle ${showTableOwnerLabels === true ? 'active' : ''}`}
                     id="table-owner-labels-btn"
                     type="button"
-                    title={showTableOwnerLabels === true ? 'Hide tab names on tables' : 'Show tab names on tables'}
                     aria-label={showTableOwnerLabels === true ? 'Hide tab names on tables' : 'Show tab names on tables'}
+                    data-erd-help={showTableOwnerLabels === true ? 'Hide SQL tab names on tables' : 'Show SQL tab names on tables'}
                     aria-pressed={showTableOwnerLabels === true}
                     onClick={() => onShowTableOwnerLabelsChange(showTableOwnerLabels !== true)}
                 >
@@ -84,7 +86,7 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
             )}
 
             <div className="erd-control-popover">
-                <button className="erd-btn" id="table-nav-btn" type="button" title="Table Navigator" aria-haspopup="dialog" aria-controls="table-nav-popup" aria-expanded="false">
+                <button className="erd-btn" id="table-nav-btn" type="button" aria-label="Table Navigator" data-erd-help="Find and jump to a table" aria-haspopup="dialog" aria-controls="table-nav-popup" aria-expanded="false">
                     <ListIcon width="17px" height="17px" />
                 </button>
                 <div id="table-nav-popup" role="dialog" aria-label="Table navigator">
@@ -110,7 +112,7 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
             </div>
 
             <div className="erd-control-popover">
-                <button className="erd-btn" id="auto-color-only-btn" type="button" title="Table Colors" aria-label="Table Colors" aria-haspopup="dialog" aria-controls="auto-color-popup" aria-expanded="false">
+                <button className="erd-btn" id="auto-color-only-btn" type="button" aria-label="Table Colors" data-erd-help="Apply a palette or clear table colors" aria-haspopup="dialog" aria-controls="auto-color-popup" aria-expanded="false">
                     <AutoColorOnlyIcon width="24px" height="24px" />
                 </button>
 
@@ -167,23 +169,23 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
                 </div>
             </div>
 
-            <button className="erd-btn" id="add-table-btn" title="Add Table" onClick={() => setDisplayModalAddTable(true)}>
+            {canEditSchema && <button className="erd-btn" id="add-table-btn" aria-label="Add Table" data-erd-help="Add a new table to your schema" onClick={() => setDisplayModalAddTable(true)}>
                 <AddSquareIcon />
-            </button>
+            </button>}
 
-            <button className="erd-btn" id="clear-priority-btn" type="button" title="Clear Starred Tables" aria-label="Clear Starred Tables" style={{ display: 'none' }}>
+            <button className="erd-btn" id="clear-priority-btn" type="button" aria-label="Clear Starred Tables" data-erd-help="Remove stars from all tables" style={{ display: 'none' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M12 3 14.65 8.38 20.6 9.24 16.3 13.43 17.31 19.36 12 16.57 6.69 19.36 7.7 13.43 3.4 9.24 9.35 8.38 12 3Z" />
                     <path d="M4 20 20 4" />
                 </svg>
             </button>
 
-            <button className="erd-btn" id="delete-table-btn" title="Delete Table">
+            {canEditSchema && <button className="erd-btn" id="delete-table-btn" aria-label="Delete Table" data-erd-help="Delete the selected table after confirmation">
                 <TrashIcon />
-            </button>
+            </button>}
 
             <div className="erd-control-popover" id="color-control-popover">
-                <button className="erd-btn" id="color-btn" type="button" title="Color Picker" aria-label="Color Picker" aria-haspopup="dialog" aria-controls="color-popup" aria-expanded="false">
+                <button className="erd-btn" id="color-btn" type="button" aria-label="Color Picker" data-erd-help="Set table and header text colors" aria-haspopup="dialog" aria-controls="color-popup" aria-expanded="false">
                     <ColorPickerIcon />
                 </button>
                 <div id="color-popup" role="dialog" aria-label="Table appearance">
@@ -220,8 +222,8 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
                         className={`erd-btn erd-btn--toggle schema-quality-control ${hasSchemaScore ? `schema-quality-control--${String(schemaQuality.label || '').toLowerCase().replace(/\s+/g, '-')}` : ''} ${relationshipInference.isOpen ? 'active' : ''}`}
                         id="erd-health-btn"
                         type="button"
-                        title={erdHealthLabel}
                         aria-label={erdHealthLabel}
+                        data-erd-help={hasSchemaScore ? 'Review schema quality and relationship suggestions' : 'Add a table to unlock ERD health'}
                         aria-expanded={relationshipInference.isOpen}
                         aria-controls="relationship-suggestions-panel"
                         disabled={!hasSchemaScore}
@@ -235,6 +237,6 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
                     <RelationshipSuggestionsPanel inference={relationshipInference} anchorRef={erdHealthButtonRef} />
                 </>
             )}
-        </div>
+        </ErdControlHelp>
     );
 }

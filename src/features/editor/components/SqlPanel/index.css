@@ -121,10 +121,6 @@
     height: 32px;
     align-items: center;
     justify-content: center;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    cursor: pointer;
 }
 
 .logo-homepage svg {
@@ -147,7 +143,6 @@
     padding: 4px 5px;
     cursor: pointer;
     transition: all 0.2s ease;
-    border: 0;
 }
 .btn-list-sql:hover {
     transform: translateY(-1px);
@@ -1521,6 +1516,8 @@
     align-items: center;
     gap: 12px;
 }
+
+.sql-dialect-indicator { white-space: nowrap; cursor: help; }
 
 .schema-score-indicator {
     display: inline-flex;

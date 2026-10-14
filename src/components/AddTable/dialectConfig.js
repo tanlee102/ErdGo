@@ -30,12 +30,14 @@
  *
  * Round-trip guarantee: every SQL fragment produced by these helpers is
  * parsed cleanly by `src/lib/parse-ast/parseAst.js` (covered by the
- * end-to-end parser pipeline).
+ * end-to-end pipeline test suite).
  */
 
 // ────────────────────────────────────────────────────────────────────────────
 // Identifier quoting (smart: only quotes when actually necessary)
 // ────────────────────────────────────────────────────────────────────────────
+
+import { identifierPartsFromText } from '@/lib/sqlIdentifierIdentity';
 
 const BARE_IDENT = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -46,6 +48,14 @@ const COMMON_RESERVED = new Set([
     'alter', 'drop', 'insert', 'update', 'delete', 'into', 'values',
     'user', 'role', 'type', 'case', 'when', 'then', 'end', 'is', 'in',
     'between', 'like', 'desc', 'asc',
+    'constraint', 'having', 'join', 'inner', 'outer', 'left', 'right', 'full',
+    'union', 'distinct', 'limit', 'offset', 'grant', 'revoke', 'database',
+    'schema', 'view', 'trigger', 'procedure', 'function', 'return', 'returns',
+    'with', 'recursive', 'over', 'window', 'partition', 'column', 'add',
+    'if', 'exists', 'begin', 'commit', 'rollback', 'transaction', 'execute',
+    'exec', 'identity', 'autoincrement', 'collate', 'cascade', 'restrict',
+    'set', 'on', 'off', 'any', 'all', 'some', 'using', 'natural', 'for',
+    'fetch', 'next', 'top', 'current_date', 'current_time', 'current_timestamp',
 ]);
 
 /**
@@ -61,21 +71,20 @@ const COMMON_RESERVED = new Set([
  *  2. Bare segments that aren't reserved words pass through unquoted so
  *     the generated SQL stays human-readable (`users`, not `"users"`).
  */
-function quoteFactory(open, close) {
+function quoteFactory(open, close, qualified = true) {
     const escapeRe = new RegExp(close.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
     const quoteOne = (text) => {
         const lower = text.toLowerCase();
         if (BARE_IDENT.test(text) && !COMMON_RESERVED.has(lower)) return text;
         return `${open}${text.replace(escapeRe, close + close)}${close}`;
     };
-    return (s) => {
+    return (s, force = false) => {
         if (s == null || s === '') return s;
         const text = String(s);
-        if (!text.includes('.')) return quoteOne(text);
-        return text
-            .split('.')
-            .filter((part) => part !== '')
-            .map(quoteOne)
+        if (force) return `${open}${text.replace(escapeRe, close + close)}${close}`;
+        if (!qualified || !text.includes('.') && !text.startsWith(open)) return quoteOne(text);
+        return identifierPartsFromText(text)
+            .map((part) => part.quoted ? `${open}${part.value.replace(escapeRe, close + close)}${close}` : quoteOne(part.value))
             .join('.');
     };
 }
@@ -86,8 +95,8 @@ function quoteFactory(open, close) {
 // ────────────────────────────────────────────────────────────────────────────
 
 const KEYWORD_LITERAL = /^(?:CURRENT_TIMESTAMP|CURRENT_DATE|CURRENT_TIME|NULL|TRUE|FALSE)$/i;
-const NUMERIC_LITERAL = /^-?\d+(?:\.\d+)?$/;
-const ALREADY_QUOTED = /^(['"]).*\1$/s;
+const NUMERIC_LITERAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
+const ALREADY_QUOTED = /^(?:'(?:[^']|'')*'|"(?:[^"]|"")*")$/s;
 const FN_NAME_HEAD = /^[a-zA-Z_][a-zA-Z0-9_.]*\s*\(/;
 
 /**
@@ -146,9 +155,10 @@ function isFunctionCall(v) {
     return matchParen(v, parenIdx) === v.length;
 }
 
-export function formatDefault(raw) {
+export function formatDefault(raw, dialect = null, type = '') {
     if (raw == null || raw === '') return '';
     const v = String(raw).trim();
+    let value;
     if (
         isFunctionCall(v) ||
         KEYWORD_LITERAL.test(v) ||
@@ -156,9 +166,16 @@ export function formatDefault(raw) {
         ALREADY_QUOTED.test(v) ||
         isParenExpr(v)
     ) {
-        return v;
+        value = v;
+    } else if (dialect?.id === 'mssql' && /^N'(?:[^']|'')*'$/is.test(v)) {
+        value = v;
+    } else {
+        value = `'${v.replace(/'/g, "''")}'`;
     }
-    return `'${v.replace(/'/g, "''")}'`;
+    if (dialect?.id === 'mssql' && /^(TRUE|FALSE)$/i.test(value)) return /^TRUE$/i.test(value) ? '1' : '0';
+    const requiresExpression = (dialect?.id === 'sqlite' && isFunctionCall(value))
+        || (dialect?.id === 'mysql' && (isFunctionCall(value) || /^(CURRENT_DATE|CURRENT_TIME)$/i.test(value) || /^(?:\w*TEXT|\w*BLOB|JSON|GEOMETRY|POINT|LINESTRING|POLYGON)\b/i.test(type)));
+    return requiresExpression && !isParenExpr(value) ? `(${value})` : value;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -260,6 +277,7 @@ const SQLITE_DEFAULT_CHIPS = [
 function pgAutoInc(type) {
     const upper = (type || '').toUpperCase().trim();
     if (upper === 'BIGINT' || upper === 'BIGSERIAL') return { type: 'BIGSERIAL', suffix: '' };
+    if (upper === 'SMALLINT' || upper === 'SMALLSERIAL') return { type: 'SMALLSERIAL', suffix: '' };
     return { type: 'SERIAL', suffix: '' };
 }
 
@@ -294,6 +312,8 @@ const POSTGRES = {
     id: 'postgres',
     label: 'PostgreSQL',
     quoteIdent: quoteFactory('"', '"'),
+    quoteColumn: quoteFactory('"', '"', false),
+    fkActions: ['CASCADE', 'SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO ACTION'],
     typeGroups: PG_TYPES,
     defaultChips: PG_DEFAULT_CHIPS,
     autoIncrement: pgAutoInc,
@@ -307,6 +327,8 @@ const MYSQL = {
     id: 'mysql',
     label: 'MySQL',
     quoteIdent: quoteFactory('`', '`'),
+    quoteColumn: quoteFactory('`', '`', false),
+    fkActions: ['CASCADE', 'SET NULL', 'RESTRICT', 'NO ACTION'],
     typeGroups: MY_TYPES,
     defaultChips: MY_DEFAULT_CHIPS,
     autoIncrement: myAutoInc,
@@ -320,12 +342,15 @@ const MSSQL = {
     id: 'mssql',
     label: 'MSSQL',
     quoteIdent: quoteFactory('[', ']'),
+    quoteColumn: quoteFactory('[', ']', false),
+    fkActions: ['CASCADE', 'SET NULL', 'SET DEFAULT', 'NO ACTION'],
+    computedTypeInferred: true,
     typeGroups: MS_TYPES,
     defaultChips: MS_DEFAULT_CHIPS,
     autoIncrement: msAutoInc,
     generatedSql: (expr) => `AS (${expr}) PERSISTED`,
     supportsFkActions: true,
-    supportsIfNotExists: false, // emitted as `IF NOT EXISTS (SELECT…)` separately
+    supportsIfNotExists: false, // emitted as an OBJECT_ID guard separately
     tableSuffix: '',
 };
 
@@ -333,6 +358,8 @@ const SQLITE = {
     id: 'sqlite',
     label: 'SQLite',
     quoteIdent: quoteFactory('"', '"'),
+    quoteColumn: quoteFactory('"', '"', false),
+    fkActions: ['CASCADE', 'SET NULL', 'SET DEFAULT', 'RESTRICT', 'NO ACTION'],
     typeGroups: SQLITE_TYPES,
     defaultChips: SQLITE_DEFAULT_CHIPS,
     autoIncrement: liteAutoInc,

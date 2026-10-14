@@ -63,9 +63,10 @@ export function getLayoutModeLabel(layoutMode) {
 /**
  * Place a toolbar popover inside the visible ERD panel. The right toolbar is
  * intentionally scrollable, so its popovers use fixed positioning to avoid
- * being clipped by the toolbar's overflow container.
+ * being clipped by the toolbar's overflow container. Callers can prefer the
+ * right side for canvas-header actions; placement flips when that side is tight.
  */
-export function getToolbarPopupPosition({ triggerRect, popupRect, bounds, gap = 8, margin = 8 }) {
+export function getToolbarPopupPosition({ triggerRect, popupRect, bounds, gap = 8, margin = 8, preferredPlacement = 'left' }) {
     const popupWidth = Math.max(0, Number(popupRect?.width) || 0);
     const popupHeight = Math.max(0, Number(popupRect?.height) || 0);
     const minLeft = (Number(bounds?.left) || 0) + margin;
@@ -81,29 +82,33 @@ export function getToolbarPopupPosition({ triggerRect, popupRect, bounds, gap = 
     const triggerCenterX = (triggerLeft + triggerRight) / 2;
     const triggerCenterY = (triggerTop + triggerBottom) / 2;
 
-    let placement = 'left';
-    let left = triggerLeft - gap - popupWidth;
+    const left = triggerLeft - gap - popupWidth;
+    const right = triggerRight + gap;
+    const leftFits = left >= minLeft;
+    const rightFits = right + popupWidth <= boundsRight - margin;
+    let placement = preferredPlacement === 'right' ? 'right' : 'left';
+    let popupLeft = placement === 'right' ? right : left;
     let top = triggerCenterY - popupHeight / 2;
 
-    if (left < minLeft) {
-        const rightPlacement = triggerRight + gap;
-        if (rightPlacement + popupWidth <= boundsRight - margin) {
-            placement = 'right';
-            left = rightPlacement;
+    const preferredFits = placement === 'right' ? rightFits : leftFits;
+    if (!preferredFits) {
+        if (leftFits || rightFits) {
+            placement = leftFits ? 'left' : 'right';
+            popupLeft = leftFits ? left : right;
         } else {
             placement = 'stacked';
-            left = triggerCenterX - popupWidth / 2;
+            popupLeft = triggerCenterX - popupWidth / 2;
             const below = triggerBottom + gap;
             const above = triggerTop - gap - popupHeight;
             top = below + popupHeight <= boundsBottom - margin ? below : above >= minTop ? above : triggerCenterY - popupHeight / 2;
         }
     }
 
-    left = Math.max(minLeft, Math.min(left, maxLeft));
+    popupLeft = Math.max(minLeft, Math.min(popupLeft, maxLeft));
     top = Math.max(minTop, Math.min(top, maxTop));
     const arrowTop = Math.max(16, Math.min(triggerCenterY - top, Math.max(16, popupHeight - 16)));
 
-    return { left, top, arrowTop, placement };
+    return { left: popupLeft, top, arrowTop, placement };
 }
 
 export function getLayoutModeTitle(layoutMode) {

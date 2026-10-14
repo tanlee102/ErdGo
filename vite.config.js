@@ -30,4 +30,5 @@ export default defineConfig({
     esbuild: { loader: 'jsx', include: /\.(jsx?|js)$/, exclude: [], drop: ['debugger'] },
     optimizeDeps: { esbuildOptions: { loader: { '.js': 'jsx' } }, exclude: ['monaco-editor'] },
     worker: { format: 'es' },
+    test: { globals: true, maxWorkers: 4, environment: 'node', setupFiles: ['./tests/setup/vitest.setup.js'] },
 });

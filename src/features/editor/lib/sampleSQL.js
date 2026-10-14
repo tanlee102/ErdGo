@@ -1,5 +1,5 @@
 export const sampleSchemaSQL = `
--- ERD Go compact commerce sample
+-- Erd Go compact commerce sample
 -- Five tables demonstrate relationships, constraints, generated columns,
 -- migrations, and index badges without crowding the canvas.
 
@@ -107,5 +107,5 @@ DELETE FROM order_items WHERE order_id = 2;
 DELETE FROM orders WHERE status = 'cancelled';
 `;
 
-// Kept for features that operate on the complete sample script.
+// Kept for features and tests that operate on the complete sample script.
 export const sampleSQL = sampleSchemaSQL + sampleDataSQL;

@@ -1,6 +1,7 @@
 /** Shared chooser for starting a new SQL, Prisma, or free-form ERD document. */
-import React from 'react';
+import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
+import useModalFocus from '@/components/Modal/useModalFocus';
 
 import './index.css';
 
@@ -22,11 +23,13 @@ const CreateNewFileDialog = ({
     importTitle = 'Import SQL Files',
     importDescription = 'Drop SQL or plain-text database dumps into separate tabs',
 }) => {
+    const dialogRef = useRef(null);
+    useModalFocus(dialogRef, isDisplay);
     if (!isDisplay) return null;
 
     const dialog = (
         <div className="create-new-file-overlay">
-            <div className="create-new-file-dialog" role="dialog" aria-modal="true" aria-labelledby="create-new-file-title">
+            <div ref={dialogRef} className="create-new-file-dialog" role="dialog" aria-modal="true" aria-labelledby="create-new-file-title" tabIndex={-1}>
                 <div className="create-new-file-header">
                     <h2 id="create-new-file-title">{title}</h2>
                     <p className="create-new-file-subtitle">{subtitle}</p>

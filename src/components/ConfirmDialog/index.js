@@ -1,5 +1,6 @@
 /** Promise-based global confirmation service used by destructive and unsaved-change flows. */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import useModalFocus from '@/components/Modal/useModalFocus';
 
 import './index.css';
 
@@ -16,6 +17,7 @@ export function ConfirmProvider({ children }) {
     const [request, setRequest] = useState(null);
     const resolverRef = useRef(null);
     const confirmButtonRef = useRef(null);
+    const dialogRef = useRef(null);
 
     const close = useCallback((value) => {
         const resolver = resolverRef.current;
@@ -23,6 +25,7 @@ export function ConfirmProvider({ children }) {
         setRequest(null);
         if (resolver) resolver(value);
     }, []);
+    useModalFocus(dialogRef, Boolean(request), () => close(false));
 
     // Keep the resolver outside React state so callers can await one boolean result.
     const confirm = useCallback((options = {}) => {
@@ -46,17 +49,8 @@ export function ConfirmProvider({ children }) {
             confirmButtonRef.current?.focus();
         }, 0);
 
-        const handleKeyDown = (event) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                close(false);
-            }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
         return () => {
             window.clearTimeout(focusTimer);
-            document.removeEventListener('keydown', handleKeyDown);
         };
     }, [close, request]);
 
@@ -67,7 +61,7 @@ export function ConfirmProvider({ children }) {
             {children}
             {request && (
                 <div className="app-confirm-overlay" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close(false)}>
-                    <section className="app-confirm" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-message">
+                    <section ref={dialogRef} className="app-confirm" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title" aria-describedby="app-confirm-message" tabIndex={-1}>
                         <header className="app-confirm__header">
                             <h3 id="app-confirm-title">{request.title}</h3>
                             <button type="button" className="app-confirm__close" onClick={() => close(false)} aria-label="Close confirmation">

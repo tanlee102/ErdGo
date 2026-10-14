@@ -112,3 +112,59 @@ export const docsProductionSyntaxExamples = [
     sqliteAlterReplayExample,
     partialUniqueIndexExample,
 ];
+
+
+/** Complete PostgreSQL schema/data starter: declare each relationship once. */
+export const sqlQuickStartExample = `-- Define custom types
+CREATE TYPE status_enum AS ENUM (
+  'active', 'inactive', 'suspended'
+);
+
+-- Create tables with constraints
+CREATE TABLE departments (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE
+);
+
+CREATE TABLE employees (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  status status_enum DEFAULT 'active',
+  department_id INTEGER,
+  salary NUMERIC(10, 2) DEFAULT 0
+);
+
+-- Add constraints via ALTER TABLE
+ALTER TABLE employees
+  ADD CONSTRAINT fk_dept
+  FOREIGN KEY (department_id)
+  REFERENCES departments(id);
+
+-- Add sample data after schema DDL
+INSERT INTO departments (id, name) VALUES
+  (1, 'Engineering'),
+  (2, 'Design');
+
+INSERT INTO employees (id, name, email, status, department_id, salary) VALUES
+  (1, 'Alice', 'alice@erdgo.dev', 'active', 1, 1500.00),
+  (2, 'Bob', 'bob@erdgo.dev', 'inactive', 2, 1200.00);
+
+UPDATE employees
+  SET status = 'active'
+  WHERE id = 2;`;
+
+/** Data View transactions act on browser-local preview rows, not an external database. */
+export const previewTransactionExample = `CREATE TABLE preview_items (
+  id INTEGER PRIMARY KEY,
+  label TEXT NOT NULL
+);
+INSERT INTO preview_items (id, label) VALUES (1, 'Before transaction');
+
+BEGIN;
+INSERT INTO preview_items (id, label) VALUES (2, 'Keep this row');
+SAVEPOINT before_trial;
+INSERT INTO preview_items (id, label) VALUES (3, 'Undo this row');
+ROLLBACK TO before_trial;
+RELEASE before_trial;
+COMMIT;`;

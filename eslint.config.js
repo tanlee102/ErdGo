@@ -29,6 +29,6 @@ export default [
             'no-useless-escape': 'off',
         },
     },
-    { files: ['vite.config.js', 'eslint.config.js'], languageOptions: { globals: { ...globals.node } } },
-    { ignores: ['coverage/**', 'dist/**', 'node_modules/**', 'tests/**'] },
+    { files: ['vite.config.js', 'eslint.config.js', 'playwright.config.js'], languageOptions: { globals: { ...globals.node } } },
+    { ignores: ['coverage/**', 'dist/**', 'node_modules/**', 'tests/**', 'test-results/**', 'playwright-report/**'] },
 ];

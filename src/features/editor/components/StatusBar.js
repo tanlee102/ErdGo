@@ -1,8 +1,9 @@
-/** Live editor footer summarizing schema size, relationship count, and quality score. */
-import { useContext, useLayoutEffect, useState } from 'react';
+/** Live editor footer summarizing schema size, quality, and detected SQL dialect. */
+import { useContext, useLayoutEffect, useMemo, useState } from 'react';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { scoreErdSchema } from '@/lib/schemaQualityScore';
 import SchemaStat from '@/components/SchemaStat';
+import { detectEditorSqlDialect } from '@/features/editor/lib/sqlDialectDetection';
 
 function getSchemaStats(schema) {
     if (!schema) return { tables: 0, relations: 0, enums: 0, composites: 0 };
@@ -14,8 +15,9 @@ function getSchemaStats(schema) {
     };
 }
 
-export default function StatusBar({ schemaVersion = 0, schemaQuality = null }) {
-    const { schemaRef } = useContext(RootLayoutContext);
+export default function StatusBar({ schemaVersion = 0, schemaQuality = null, dialectDetection = null }) {
+    const { schemaRef, sqlInput } = useContext(RootLayoutContext);
+    const detection = useMemo(() => dialectDetection || detectEditorSqlDialect(sqlInput), [dialectDetection, sqlInput]);
     const [stats, setStats] = useState(() => getSchemaStats(null));
     const [calculatedQuality, setCalculatedQuality] = useState(() => scoreErdSchema(null));
 
@@ -42,7 +44,9 @@ export default function StatusBar({ schemaVersion = 0, schemaQuality = null }) {
                     <span>ERD score</span>{' '}
                     <strong>{scoreText}</strong>
                 </span>
-                <span>SQL</span>
+                <span className="sql-dialect-indicator" aria-label={`SQL language: ${detection.label}`} title={detection.description} tabIndex={0}>
+                    {detection.label}
+                </span>
             </div>
         </div>
     );

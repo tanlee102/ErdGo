@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { deleteTableFromSql, getTableDeletionInfo } from '@/lib/deleteTableFromSql';
+import { parseAST } from '@/lib/parse-ast/parseAst';
+import { DEFAULT_SCHEMA_NAME, identifierPartsEquivalent, identifierPartsFrom } from '@/lib/sqlIdentifierIdentity';
+import { prepareCanvasEditInTabs } from '@/features/editor/lib/canvasSchemaEdits';
+import { detectEditorSqlDialect } from '@/features/editor/lib/sqlDialectDetection';
+import { getRelationshipReconnectTargetsInTabs, reconnectRelationshipInTabs } from '@/features/editor/lib/relationshipReconnect';
 import {
     SQL_TABS_CONTEXT_KEY,
     buildCombinedSql,
@@ -63,8 +68,26 @@ function moveItem(items, fromIndex, toIndex) {
     return nextItems;
 }
 
+function getWorkspaceIdentifierOptions(tabs) {
+    const combinedSql = buildCombinedSql(tabs).sql;
+    if (!combinedSql.trim()) return {};
+
+    try {
+        const { ast } = parseAST(combinedSql);
+        return ast?.dialect ? { dialect: ast.dialect } : {};
+    } catch {
+        return {};
+    }
+}
+
 function getTabsAfterTableDeletion(tabs, tableName) {
     let changed = false;
+    const ownerLocation = findSqlTabTableLocation(tabs, tableName);
+    if (getTableDeletionBlockReason(tabs, ownerLocation)) return null;
+    const identifierOptions = {
+        ...getWorkspaceIdentifierOptions(tabs),
+        targetIdentifier: ownerLocation?.match?.identifier || tableName,
+    };
     const nextTabs = tabs.map((tab) => {
         if (tab.isInactive) return tab;
 
@@ -74,6 +97,7 @@ function getTabsAfterTableDeletion(tabs, tableName) {
         const nextSql = deleteTableFromSql(tab.sql, tableName, {
             removeReferencesWhenTargetMissing: true,
             preserveReferencingColumns: true,
+            ...identifierOptions,
         });
         if (nextSql === tab.sql) return tab;
         changed = true;
@@ -83,6 +107,23 @@ function getTabsAfterTableDeletion(tabs, tableName) {
     return changed ? nextTabs : null;
 }
 
+function getTableDeletionBlockReason(tabs, ownerLocation) {
+    if (!ownerLocation) return 'The table has no unambiguous SQL tab owner. Use its qualified name in SQL.';
+    const { ast } = parseAST(buildCombinedSql(tabs).sql);
+    const target = identifierPartsFrom(ownerLocation.match.identifier);
+    const defaultSchema = ast.dialectProfile?.defaultSchema || DEFAULT_SCHEMA_NAME;
+    const matches = (name, parts) => identifierPartsEquivalent(target, identifierPartsFrom(name, parts), defaultSchema, ast.dialect);
+    // The existing deletion engine matches names, not table incarnations.
+    // Never let a repeated name remove a dropped/renamed table's CREATE or
+    // a later replacement. Source jumps can still use precise provenance.
+    if (ast.tables.filter((table) => matches(table.name, table.nameParts)).length > 1
+        || ast.drops.some((drop) => drop.kind === 'table' && matches(drop.name, drop.nameParts))
+        || ast.alters.some((alter) => alter.action === 'rename_table' && matches(alter.table, alter.tableParts))) {
+        return 'This table is part of a rename or drop/recreate migration. Delete the intended table at the correct point in SQL.';
+    }
+    return null;
+}
+
 function createSavedTabsSnapshot(savedSql, savedContext, currentTabs = []) {
     const snapshot = hydrateSqlTabsFromContext(typeof savedSql === 'string' ? savedSql : '', savedContext);
     const hasSavedTabMeta = Boolean(getSqlTabsMeta(savedContext));
@@ -90,8 +131,15 @@ function createSavedTabsSnapshot(savedSql, savedContext, currentTabs = []) {
     if (!hasSavedTabMeta && snapshot.length === 1 && currentTabs.length === 1) {
         return [{ ...snapshot[0], id: currentTabs[0].id }];
     }
-
-    return snapshot;
+    const persistedIds = new Set(getSqlTabsMeta(savedContext)?.tabs.map((tab) => tab?.id));
+    // Hydrating corrupt/missing IDs repairs them with fresh workspace IDs.
+    // Reuse that repair for the saved baseline when its content still matches;
+    // generating another ID would mark an untouched loaded tab dirty.
+    return snapshot.map((tab, index) => {
+        const current = currentTabs[index];
+        return !persistedIds.has(tab.id) && current && current.sql === tab.sql && current.title === tab.title && Boolean(current.isInactive) === Boolean(tab.isInactive)
+            ? { ...tab, id: current.id } : tab;
+    });
 }
 
 /**
@@ -112,13 +160,9 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
     const manualCommitVersionRef = useRef(0);
     const renderManualCommitVersion = manualCommitVersionRef.current;
 
-    useEffect(() => {
-        tabsRef.current = tabs;
-    }, [tabs]);
-
-    useEffect(() => {
-        activeTabIdRef.current = activeTabId;
-    }, [activeTabId]);
+    // Hydration, commitTabs and activateTab update refs before state. Mirroring
+    // older render state in passive effects can overwrite those newer writes,
+    // including the repaired IDs needed by the initial saved baseline.
 
     const syncContext = useCallback(
         (nextTabs = tabsRef.current, nextActiveTabId = activeTabIdRef.current) => {
@@ -227,6 +271,80 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
 
     const combinedSql = useMemo(() => buildCombinedSql(tabs).sql, [tabs]);
 
+    const dialectDetection = useMemo(() => detectEditorSqlDialect(activeTab.sql, combinedSql), [activeTab.sql, combinedSql]);
+    // Global Add Table stays mounted while hidden. Read current refs when it
+    // opens so switching tabs also refreshes its default without a SQL edit.
+    const getSqlDialectDetection = useCallback(() => {
+        const focusedTab = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
+        return detectEditorSqlDialect(focusedTab?.sql || '', buildCombinedSql(tabsRef.current).sql);
+    }, []);
+
+    const getAddTableContext = useCallback(() => {
+        const current = tabsRef.current;
+        const index = current.findIndex(tab => tab.id === activeTabIdRef.current);
+        if (index < 0) return null;
+        // Include the focused inactive draft for validation only. Other inactive
+        // tabs remain private, and later active tabs are not forward FK targets.
+        const before = current.slice(0, index + 1).map((tab, i) => i === index ? { ...tab, isInactive: false } : tab);
+        return { beforeSql: buildCombinedSql(before).sql, afterSql: buildCombinedSql(current.slice(index + 1)).sql,
+            revision: JSON.stringify([loadVersion, activeTabIdRef.current, current.map(tab => [tab.id, tab.sql, tab.isInactive === true])]) };
+    }, [loadVersion]);
+
+    const canvasLoadVersionRef = useRef(loadVersion);
+    useLayoutEffect(() => { canvasLoadVersionRef.current = loadVersion; }, [loadVersion]);
+    const editCanvasSchema = useCallback((action, { preview = false, expectedRevision = null } = {}) => {
+        const previousTabs = tabsRef.current;
+        const snapshot = (list) => JSON.stringify(list.map((tab) => [tab.id, tab.sql, tab.isInactive === true]));
+        const revision = JSON.stringify([loadVersion, snapshot(previousTabs)]);
+        if (expectedRevision && expectedRevision !== revision) return { ok: false, message: 'SQL changed while reviewing this action. Try again to see its current impact.' };
+        const result = prepareCanvasEditInTabs(previousTabs, action);
+        if (!result.ok || preview) return { ok: result.ok, message: result.message, impacts: result.impacts, revision, ...(result.canCascade ? { canCascade: true } : {}) };
+        if (action.kind === 'add-column' && erdContextRef?.current?.tableCompactModes?.[action.table] === true) {
+            // Reveal the new field immediately; other tables keep their views.
+            erdContextRef.current = { ...erdContextRef.current, tableCompactModes: { ...erdContextRef.current.tableCompactModes, [action.table]: false } };
+        }
+        commitTabs(result.nextTabs, { syncContext: true, notifyContextChanged: true });
+        const committed = snapshot(result.nextTabs);
+        const undo = () => {
+            if (canvasLoadVersionRef.current !== loadVersion || snapshot(tabsRef.current) !== committed) return false;
+            const oldSql = new Map(previousTabs.map((tab) => [tab.id, tab.sql]));
+            commitTabs(tabsRef.current.map((tab) => ({ ...tab, sql: oldSql.get(tab.id) })), { syncContext: true, notifyContextChanged: true });
+            return true;
+        };
+        return { ...result, revision, undo };
+    }, [commitTabs, erdContextRef, loadVersion]);
+
+    const getRelationshipReconnectTargets = useCallback(async (relation, endpoint) => {
+        const previousTabs = tabsRef.current;
+        const result = await getRelationshipReconnectTargetsInTabs(previousTabs, relation, endpoint);
+        // Suggestions may yield while the user edits SQL. Discard that result;
+        // commit also validates independently against the current refs.
+        if (tabsRef.current !== previousTabs) return { ok: false, targets: [], message: 'SQL tabs changed. Reopen the connector to refresh its choices.' };
+        return result;
+    }, []);
+
+    const reconnectRelationship = useCallback((relation, endpoint, target, { preview = false } = {}) => {
+        // Revalidate against live refs at release, including edits made while a
+        // connector was being dragged. Never write into the focused tab by default.
+        const previousTabs = tabsRef.current;
+        const result = reconnectRelationshipInTabs(previousTabs, relation, endpoint, target);
+        let undo;
+        if (result.ok && !result.unchanged && !preview) {
+            commitTabs(result.nextTabs, { syncContext: true, notifyContextChanged: true });
+            const snapshot = (tabs) => JSON.stringify(tabs.map((tab) => [tab.id, tab.sql, tab.isInactive === true]));
+            const committedSnapshot = snapshot(result.nextTabs);
+            undo = () => {
+                // Never overwrite SQL edits made after this reconnect. Cosmetic
+                // tab renames and focus changes are retained when undo is safe.
+                if (canvasLoadVersionRef.current !== loadVersion || snapshot(tabsRef.current) !== committedSnapshot) return false;
+                const oldSql = new Map(previousTabs.map((tab) => [tab.id, tab.sql]));
+                commitTabs(tabsRef.current.map((tab) => ({ ...tab, sql: oldSql.get(tab.id) })), { syncContext: true, notifyContextChanged: true });
+                return true;
+            };
+        }
+        return { ok: result.ok, unchanged: result.unchanged, message: result.message, undo };
+    }, [commitTabs, loadVersion]);
+
     const dirtyTabIds = useMemo(() => getDirtySqlTabIds(tabs, savedTabsSnapshot), [savedTabsSnapshot, tabs]);
 
     const setActiveTabSql = useCallback(
@@ -241,7 +359,8 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
     );
 
     const appendSqlToActiveTab = useCallback(
-        (sqlToAppend) => {
+        (sqlToAppend, { expectedRevision = null } = {}) => {
+            if (expectedRevision && getAddTableContext()?.revision !== expectedRevision) return false;
             const addition = typeof sqlToAppend === 'string' ? sqlToAppend.trim() : '';
             const activeTab = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
             if (!addition || !activeTab) return false;
@@ -251,7 +370,7 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
             commitTabs(nextTabs, { syncContext: true, notifyContextChanged: true });
             return true;
         },
-        [commitTabs],
+        [commitTabs, getAddTableContext],
     );
 
     const deleteTableFromTabs = useCallback(
@@ -294,11 +413,18 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
         (tableName) => {
             const owner = getTableOwner(tableName);
             const references = [];
+            const ownerLocation = findSqlTabTableLocation(tabsRef.current, tableName);
+            const blockedReason = getTableDeletionBlockReason(tabsRef.current, ownerLocation);
+            if (blockedReason) return { tableName, owner, references, blockedReason };
+            const identifierOptions = {
+                ...getWorkspaceIdentifierOptions(tabsRef.current),
+                targetIdentifier: ownerLocation?.match?.identifier || tableName,
+            };
 
             tabsRef.current.forEach((tab) => {
                 if (tab.isInactive) return;
 
-                const info = getTableDeletionInfo(tab.sql, tableName);
+                const info = getTableDeletionInfo(tab.sql, tableName, identifierOptions);
                 info.items
                     .filter((item) => item.type !== 'table')
                     .forEach((item) => {
@@ -622,6 +748,12 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
         activeSql: activeTab?.sql || '',
         hydrationVersion,
         combinedSql,
+        dialectDetection,
+        getSqlDialectDetection,
+        getAddTableContext,
+        editCanvasSchema,
+        getRelationshipReconnectTargets,
+        reconnectRelationship,
         dirtyTabIds,
         setActiveTabSql,
         appendSqlToActiveTab,

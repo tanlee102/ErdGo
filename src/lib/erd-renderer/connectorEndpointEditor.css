@@ -1,9 +1,63 @@
-/* Canvas-overlay handles used to reposition selected relationship endpoints. */
+/* Connector side/field editor and live drag feedback; geometry stays on canvas. */
+.erd-reconnect-status {
+    position: absolute;
+    z-index: 2401;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 24px);
+    padding: 8px 12px;
+    border: 1px solid var(--border, #d7dce5);
+    border-radius: 8px;
+    background: var(--dialog-bg, #fff);
+    color: var(--foreground, #172033);
+    font-size: 12px;
+    pointer-events: none;
+}
+
+.erd-reconnect-status[hidden] { display: none; }
+.erd-reconnect-status[data-valid='true'] { border-color: #16a34a; }
+.erd-reconnect-status[data-valid='false'] { border-color: #ef4444; }
+
+.erd-connector-reconnect {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+    font-size: 11px;
+}
+
+.erd-connector-reconnect select {
+    width: 100%;
+    min-width: 0;
+    padding: 6px;
+    border: 1px solid var(--border, #d7dce5);
+    border-radius: 6px;
+    background: var(--dialog-bg, #fff);
+    color: inherit;
+    font: inherit;
+}
+
+.erd-connector-reconnect span { overflow-wrap: anywhere; }
+.erd-connector-reconnect__apply {
+    justify-self: start;
+    padding: 6px 9px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--theme-color, #2c70ed);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+}
+.erd-connector-reconnect__apply:disabled { opacity: .45; cursor: default; }
+
 .erd-connector-side-popup {
     position: absolute;
     z-index: 2400;
     display: none;
-    width: min(280px, calc(100% - 20px));
+    width: min(380px, calc(100% - 20px));
+    max-height: calc(100% - 20px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 10px;
     color: var(--foreground, #172033);
     background: color-mix(in srgb, var(--dialog-bg, #fff) 96%, transparent);
@@ -16,24 +70,30 @@
 
 .erd-connector-side-popup.is-open {
     display: grid;
+    /* An explicit shrinkable track prevents long SQL identifiers from
+       widening grid children beyond the popup's fixed responsive width. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 9px;
 }
 
 .erd-connector-side-popup__header {
     display: flex;
+    min-width: 0;
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
 }
 
+.erd-connector-side-popup__heading {
+    min-width: 0;
+}
+
 .erd-connector-side-popup__title {
-    overflow: hidden;
     margin: 0;
     font-size: 12px;
     font-weight: 700;
     line-height: 1.35;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .erd-connector-side-popup__hint {
@@ -65,9 +125,12 @@
 
 .erd-connector-side-popup__row {
     display: grid;
+    width: 100%;
+    min-width: 0;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
+    box-sizing: border-box;
 }
 
 .erd-connector-side-popup__endpoint {
@@ -94,6 +157,7 @@
 
 .erd-connector-side-popup__options {
     display: inline-flex;
+    max-width: 100%;
     padding: 2px;
     background: color-mix(in srgb, var(--foreground, #172033) 7%, transparent);
     border-radius: 7px;
@@ -125,13 +189,54 @@
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.2);
 }
 
+.erd-connector-side-popup__footer {
+    display: grid;
+    gap: 5px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border, #d7dce5);
+}
+
+.erd-connector-side-popup__delete {
+    display: inline-flex;
+    justify-self: start;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid color-mix(in srgb, #ef4444 35%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, #ef4444 8%, transparent);
+    color: var(--list-file-danger-color, #dc2626);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.erd-connector-side-popup__delete > span { font-size: 18px; line-height: 1; }
+.erd-connector-side-popup__delete:hover { background: color-mix(in srgb, #ef4444 16%, transparent); }
+.erd-connector-side-popup__delete:focus-visible { outline: 1px solid currentColor; outline-offset: 0; }
+.erd-connector-side-popup__delete:disabled { opacity: .45; cursor: default; }
+.erd-connector-side-popup__delete-status { font-size: 11px; overflow-wrap: anywhere; }
+.erd-connector-side-popup__delete-status[hidden] { display: none; }
+
 @media (max-width: 640px) {
     .erd-connector-side-popup {
-        width: min(300px, calc(100% - 16px));
+        width: min(360px, calc(100% - 20px));
+        max-height: calc(100% - 20px);
     }
 
     .erd-connector-side-popup__option {
         min-width: 40px;
         height: 30px;
+    }
+}
+
+@media (max-width: 420px) {
+    .erd-connector-side-popup__row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .erd-connector-side-popup__options {
+        justify-self: start;
     }
 }

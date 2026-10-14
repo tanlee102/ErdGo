@@ -10,6 +10,35 @@ export default function ErdPanel({ splitter, erdRendering, toggleTheme, viewMode
     const isQueryView = viewMode === 'query';
     const isErdView = viewMode === 'erd';
     const [isMinimapOpen, setIsMinimapOpen] = useState(false);
+    const [mountedViews, setMountedViews] = useState(() => ({
+        data: isDataView,
+        query: isQueryView,
+    }));
+    const [retainedDataContent, setRetainedDataContent] = useState(dataContent);
+
+    // Mount each workbench lazily, then hide it instead of unmounting it. This
+    // preserves table selection, native scroll positions, and editor view state
+    // while the user moves between ERD, Data, and Query.
+    useEffect(() => {
+        if (!isDataView && !isQueryView) return;
+        setMountedViews((current) => {
+            if ((isDataView && current.data) || (isQueryView && current.query)) return current;
+            return {
+                ...current,
+                data: current.data || isDataView,
+                query: current.query || isQueryView,
+            };
+        });
+    }, [isDataView, isQueryView]);
+
+    // EditorPage intentionally stops materializing Data View while ERD alone is
+    // active. Keep the last rendered child so that optimization does not tear
+    // down the hidden TableViewer and its local interaction state.
+    useEffect(() => {
+        if (dataContent != null) {
+            setRetainedDataContent(dataContent);
+        }
+    }, [dataContent]);
 
     // The canvas runtime should render its minimap only while the ERD surface is visible.
     useEffect(() => {
@@ -32,8 +61,16 @@ export default function ErdPanel({ splitter, erdRendering, toggleTheme, viewMode
                 </aside>
             </div>
 
-            {isDataView && <div className="erd-data-view">{dataContent}</div>}
-            {isQueryView && <div className="erd-query-view">{queryContent}</div>}
+            {(mountedViews.data || isDataView) && (
+                <div className="erd-data-view" hidden={!isDataView} aria-hidden={!isDataView}>
+                    {dataContent ?? retainedDataContent}
+                </div>
+            )}
+            {(mountedViews.query || isQueryView) && (
+                <div className="erd-query-view" hidden={!isQueryView} aria-hidden={!isQueryView}>
+                    {queryContent}
+                </div>
+            )}
 
             <ErdTopControls
                 erdRendering={erdRendering}

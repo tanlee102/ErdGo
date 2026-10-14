@@ -1,0 +1,132 @@
+{
+  "enums": [],
+  "composites": [],
+  "tables": [
+    {
+      "name": "tenants",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true
+        },
+        {
+          "name": "name",
+          "type": "TEXT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": []
+        }
+      ]
+    },
+    {
+      "name": "accounts",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true
+        },
+        {
+          "name": "tenant_id",
+          "type": "INT",
+          "constraints": [
+            "NN",
+            "PUQ"
+          ],
+          "extras": [
+            "PARTIAL UNIQUE INDEX ux_accounts_active_email WHERE deleted_at IS NULL"
+          ],
+          "fk": true,
+          "compositePartialUq": true
+        },
+        {
+          "name": "email",
+          "type": "TEXT",
+          "constraints": [
+            "NN",
+            "PUQ"
+          ],
+          "extras": [
+            "PARTIAL UNIQUE INDEX ux_accounts_active_email WHERE deleted_at IS NULL"
+          ],
+          "compositePartialUq": true
+        },
+        {
+          "name": "deleted_at",
+          "type": "TIMESTAMP",
+          "constraints": [],
+          "extras": []
+        }
+      ]
+    },
+    {
+      "name": "account_events",
+      "columns": [
+        {
+          "name": "id",
+          "type": "INT",
+          "constraints": [
+            "PK"
+          ],
+          "extras": [],
+          "pk": true
+        },
+        {
+          "name": "account_id",
+          "type": "INT",
+          "constraints": [
+            "NN"
+          ],
+          "extras": [],
+          "fk": true
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "from": {
+        "table": "account_events",
+        "column": "account_id"
+      },
+      "to": {
+        "table": "accounts",
+        "column": "id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "actions": {
+        "onDelete": "CASCADE",
+        "deferrable": true,
+        "initially": "DEFERRED"
+      }
+    },
+    {
+      "from": {
+        "table": "accounts",
+        "column": "tenant_id"
+      },
+      "to": {
+        "table": "tenants",
+        "column": "id"
+      },
+      "fromCard": "0..n",
+      "toCard": "1",
+      "actions": {
+        "onDelete": "CASCADE",
+        "onUpdate": "RESTRICT"
+      }
+    }
+  ],
+  "diagnostics": []
+}

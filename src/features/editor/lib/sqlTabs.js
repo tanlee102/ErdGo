@@ -1,11 +1,15 @@
-import { DEFAULT_SCHEMA_NAME } from '@/lib/sqlIdentifierIdentity';
+import { DEFAULT_SCHEMA_NAME, identifierPartsFromText } from '@/lib/sqlIdentifierIdentity';
+import { tokenize } from '@/lib/parse-ast/tokenize';
+import { sqlToErdSchema } from '@/lib/erdJsonSchema';
+import { getSqlDialectProfile } from '@/lib/sqlDialectProfiles';
+import { MyersDiff } from './diffAlgorithm';
 
 const SQL_TAB_META_VERSION = 2;
 export const SQL_TABS_CONTEXT_KEY = 'sqlTabs';
 export const INACTIVE_TAB_PLACEHOLDER_SQL = '-- SQL content is stored in inactive tabs.';
 
 // The editor still stores and parses one combined SQL document. Tabs are a UI
-// and persistence layer over that document: active tabs compile in creation
+// and persistence layer over that document: active tabs compile in workspace
 // order, while inactive tabs keep their SQL only in metadata.
 let tabIdSequence = 0;
 
@@ -19,16 +23,20 @@ function normalizeSql(value) {
 }
 
 function countLines(value) {
-    return normalizeSql(value).split('\n').length;
+    const sql = normalizeSql(value);
+    let count = 1;
+    for (let i = 0; i < sql.length; i += 1) {
+        if (sql[i] === '\r' || (sql[i] === '\n' && sql[i - 1] !== '\r')) count += 1;
+    }
+    return count;
 }
 
 function isObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function clampRange(value, min, max) {
-    if (!Number.isInteger(value)) return null;
-    return Math.max(min, Math.min(max, value));
+function validRangeOffset(value, min, max) {
+    return Number.isInteger(value) && value >= min && value <= max ? value : null;
 }
 
 export function createSqlTab({ id, title, sql = '', createdAt, isInactive = false } = {}) {
@@ -173,6 +181,7 @@ export function buildCombinedSql(tabs) {
     const safeTabs = Array.isArray(tabs) && tabs.length > 0 ? tabs : createSingleSqlTab('');
     const ranges = [];
     let sql = '';
+    let nextStartLine = 1;
     let hasWrittenContent = false;
     const hasInactiveSql = safeTabs.some((tab) => tab?.isInactive && normalizeSql(tab?.sql).trim().length > 0);
 
@@ -181,11 +190,14 @@ export function buildCombinedSql(tabs) {
         const content = isInactive ? '' : normalizeSql(tab?.sql);
 
         if (content.length > 0 && hasWrittenContent) {
+            // A trailing CR joins the separator's first LF into one newline,
+            // exactly as the tokenizer does; CRLF must never count twice.
+            nextStartLine += sql.endsWith('\r') ? 1 : 2;
             sql += '\n\n';
         }
 
         const start = sql.length;
-        const startLine = countLines(sql);
+        const startLine = nextStartLine;
 
         if (content.length > 0) {
             sql += content;
@@ -193,6 +205,7 @@ export function buildCombinedSql(tabs) {
         }
 
         const lineCount = content.length > 0 ? countLines(content) : 0;
+        nextStartLine += Math.max(0, lineCount - 1);
         const end = sql.length;
         ranges.push({
             id: tab?.id,
@@ -269,8 +282,8 @@ export function hydrateSqlTabsFromContext(sql, context) {
         if (!isObject(item)) return createFallbackTabsFromContextSql(sourceSql, meta);
 
         const isInactive = item.isInactive === true;
-        const start = clampRange(item.start, 0, sourceSql.length);
-        const end = clampRange(item.end, 0, sourceSql.length);
+        const start = validRangeOffset(item.start, 0, sourceSql.length);
+        const end = validRangeOffset(item.end, 0, sourceSql.length);
         if (!isInactive && (start === null || end === null || end < start)) {
             return createFallbackTabsFromContextSql(sourceSql, meta);
         }
@@ -292,7 +305,9 @@ export function hydrateSqlTabsFromContext(sql, context) {
     // Active tab ranges are persisted from a single combined SQL document.
     // If they overlap, arrive out of order, or leave content unowned, refuse
     // to guess an owner and keep the original SQL in one active tab instead.
-    return buildCombinedSql(nextTabs).sql === sourceSql ? nextTabs : createFallbackTabsFromContextSql(sourceSql, meta);
+    const combined = buildCombinedSql(nextTabs);
+    const exactRanges = combined.ranges.every((range, index) => range.isInactive || (range.start === meta.tabs[index].start && range.end === meta.tabs[index].end));
+    return combined.sql === sourceSql && exactRanges ? nextTabs : createFallbackTabsFromContextSql(sourceSql, meta);
 }
 
 export function getDirtySqlTabIds(tabs, savedTabs) {
@@ -343,6 +358,51 @@ function rangeTouchesChange(range, changeStart, changeEnd) {
     return changeStart >= range.start && changeStart <= range.end;
 }
 
+function independentEditWindows(previousSql, nextSql) {
+    const offsets = (sql) => {
+        const result = [0];
+        for (let i = 0; i < sql.length; i += 1) if (sql[i] === '\n') result.push(i + 1);
+        result.push(sql.length);
+        return result;
+    };
+    const oldOffsets = offsets(previousSql);
+    const nextOffsets = offsets(nextSql);
+    const windows = [];
+    let oldLine = 0;
+    let nextLine = 0;
+    let start = null;
+    const flush = () => {
+        if (!start) return;
+        let oldStart = oldOffsets[start.oldLine];
+        let newStart = nextOffsets[start.nextLine];
+        // A line diff ignores whether its last equal line has a terminator.
+        // When appending/removing final lines, include that changed newline in
+        // the hunk instead of leaving it outside both slices and losing tabs.
+        if (start.oldLine === oldOffsets.length - 1 && oldStart > 0 && nextSql[newStart - 1] === '\n') newStart -= 1;
+        if (start.nextLine === nextOffsets.length - 1 && newStart > 0 && previousSql[oldStart - 1] === '\n') oldStart -= 1;
+        const oldText = previousSql.slice(oldStart, oldOffsets[oldLine]);
+        const newText = nextSql.slice(newStart, nextOffsets[nextLine]);
+        const diff = findDiffWindow(oldText, newText);
+        if (diff) windows.push({ start: oldStart + diff.start, previousEnd: oldStart + diff.previousEnd, text: newText.slice(diff.start, diff.nextEnd) });
+        start = null;
+    };
+    // The shared diff engine bounds expensive rewrites. Its coarse fallback
+    // deliberately collapses ambiguous cross-tab replacements below.
+    for (const change of MyersDiff.diff(previousSql, nextSql)) {
+        if (change.type === 'equal') {
+            flush();
+            oldLine += 1;
+            nextLine += 1;
+        } else {
+            start ||= { oldLine, nextLine };
+            if (change.type === 'delete') oldLine += 1;
+            else nextLine += 1;
+        }
+    }
+    flush();
+    return windows;
+}
+
 export function reconcileSqlTabsFromCombinedSql(tabs, nextSql) {
     const safeTabs = Array.isArray(tabs) && tabs.length > 0 ? tabs : createSingleSqlTab('');
     const sourceSql = normalizeSql(nextSql);
@@ -357,12 +417,26 @@ export function reconcileSqlTabsFromCombinedSql(tabs, nextSql) {
         return [{ ...safeTabs[0], sql: sourceSql }];
     }
 
-    // This bridge handles legacy/global writes to `sqlInput`. We only map the
-    // change back to a tab when exactly one active tab range was touched; cross-
-    // tab edits collapse to a single tab to avoid assigning SQL to the wrong tab.
+    // Keep the fast single-window path for ordinary edits. For independent
+    // edits in several tabs, unchanged boundaries can prove each owner.
     const touchedRanges = previous.ranges.filter((range) => !range.isInactive && range.lineCount > 0 && rangeTouchesChange(range, diff.start, diff.previousEnd));
     if (touchedRanges.length !== 1) {
-        return createFallbackTabsFromCombinedSql(sourceSql, safeTabs);
+        const editsById = new Map();
+        const windows = independentEditWindows(previous.sql, sourceSql);
+        for (const edit of windows) {
+            const owners = previous.ranges.filter((range) => !range.isInactive && range.lineCount > 0 && rangeTouchesChange(range, edit.start, edit.previousEnd));
+            if (owners.length !== 1 || edit.start < owners[0].start || edit.previousEnd > owners[0].end) return createFallbackTabsFromCombinedSql(sourceSql, safeTabs);
+            const owner = owners[0];
+            if (!editsById.has(owner.id)) editsById.set(owner.id, []);
+            editsById.get(owner.id).push({ start: edit.start - owner.start, end: edit.previousEnd - owner.start, text: edit.text });
+        }
+        const reconciled = safeTabs.map((tab) => {
+            const edits = editsById.get(tab.id);
+            if (!edits) return tab;
+            const sql = edits.sort((a, b) => b.start - a.start).reduce((text, edit) => text.slice(0, edit.start) + edit.text + text.slice(edit.end), normalizeSql(tab.sql));
+            return { ...tab, sql };
+        });
+        return buildCombinedSql(reconciled).sql === sourceSql ? reconciled : createFallbackTabsFromCombinedSql(sourceSql, safeTabs);
     }
 
     const touchedRange = touchedRanges[0];
@@ -381,12 +455,11 @@ export function reconcileSqlTabsFromCombinedSql(tabs, nextSql) {
     return buildCombinedSql(nextTabs).sql === sourceSql ? nextTabs : createFallbackTabsFromCombinedSql(sourceSql, safeTabs);
 }
 
-export function mapDiagnosticToSqlTab(error, tabs) {
+export function mapDiagnosticToSqlTab(error, tabs, ranges = null) {
     const line = error?.line ?? error?.position?.line;
     if (!Number.isInteger(line) || line < 1) return error;
 
-    const { ranges } = buildCombinedSql(tabs);
-    const range = ranges.find((item) => item.lineCount > 0 && line >= item.startLine && line <= item.endLine);
+    const range = (ranges || buildCombinedSql(tabs).ranges).find((item) => item.lineCount > 0 && line >= item.startLine && line <= item.endLine);
     if (!range) return error;
 
     const localLine = line - range.startLine + 1;
@@ -401,279 +474,52 @@ export function mapDiagnosticToSqlTab(error, tabs) {
 
 export function mapDiagnosticsToSqlTabs(errors, tabs) {
     if (!Array.isArray(errors) || errors.length === 0) return [];
-    return errors.map((error) => mapDiagnosticToSqlTab(error, tabs));
+    const { ranges } = buildCombinedSql(tabs);
+    return errors.map((error) => mapDiagnosticToSqlTab(error, tabs, ranges));
 }
 
 export function mapDiagnosticsToActiveSqlTab(errors, tabs, activeTabId) {
     return mapDiagnosticsToSqlTabs(errors, tabs).filter((error) => !error.tabId || error.tabId === activeTabId);
 }
 
-const CREATE_TABLE_PREFIX_REGEX = /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL|TEMP|TEMPORARY|VOLATILE|TRANSIENT|UNLOGGED|MULTISET|SET)\s+)*TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?/gi;
+// Reuse the parser tokenizer for comments, dollar strings, escaped names and
+// token positions. A raw-text regex cannot distinguish SQL from quoted SQL.
+const TABLE_MODIFIERS = new Set(['GLOBAL', 'LOCAL', 'TEMP', 'TEMPORARY', 'VOLATILE', 'TRANSIENT', 'UNLOGGED', 'MULTISET', 'SET']);
+const isWord = (token, word) => token && ['KW', 'IDENT'].includes(token.type) && token.raw.toUpperCase() === word;
+let cachedDeclarations;
+let cachedOwners;
 
-function getLineColumnAtIndex(sql, index) {
-    const safeSql = normalizeSql(sql);
-    const safeIndex = Math.max(0, Math.min(index, safeSql.length));
-    const previousNewlineIndex = safeSql.lastIndexOf('\n', safeIndex - 1);
-    const line = safeSql.slice(0, safeIndex).split('\n').length;
-
-    return {
-        line,
-        column: safeIndex - previousNewlineIndex,
-    };
-}
-
-function isCodePosition(sql, targetIndex) {
-    const safeSql = normalizeSql(sql);
-    let state = null;
-
-    for (let index = 0; index < targetIndex; index += 1) {
-        const char = safeSql[index];
-        const next = safeSql[index + 1];
-
-        if (state === 'lineComment') {
-            if (char === '\n') state = null;
-            continue;
+function readTableDeclarations(sql) {
+    const source = normalizeSql(sql);
+    if (cachedDeclarations?.sql === source) return cachedDeclarations.matches;
+    const { tokens } = tokenize(source);
+    const matches = [];
+    for (let i = 0; i < tokens.length; i += 1) {
+        if (!isWord(tokens[i], 'CREATE')) continue;
+        const create = tokens[i];
+        let cursor = i + 1;
+        if (isWord(tokens[cursor], 'OR') && isWord(tokens[cursor + 1], 'REPLACE')) cursor += 2;
+        while (TABLE_MODIFIERS.has(tokens[cursor]?.raw.toUpperCase())) cursor += 1;
+        if (!isWord(tokens[cursor], 'TABLE')) continue;
+        cursor += 1;
+        if (isWord(tokens[cursor], 'IF') && isWord(tokens[cursor + 1], 'NOT') && isWord(tokens[cursor + 2], 'EXISTS')) cursor += 3;
+        const first = tokens[cursor];
+        const parts = [];
+        let last;
+        while (['IDENT', 'KW'].includes(tokens[cursor]?.type)) {
+            last = tokens[cursor];
+            parts.push(last.value);
+            cursor += 1;
+            if (tokens[cursor]?.value !== '.') break;
+            cursor += 1;
         }
-
-        if (state === 'blockComment') {
-            if (char === '*' && next === '/') {
-                index += 1;
-                state = null;
-            }
-            continue;
-        }
-
-        if (state === 'singleQuote') {
-            if (char === "'" && next === "'") {
-                index += 1;
-            } else if (char === "'") {
-                state = null;
-            }
-            continue;
-        }
-
-        if (state === 'doubleQuote') {
-            if (char === '"' && next === '"') {
-                index += 1;
-            } else if (char === '"') {
-                state = null;
-            }
-            continue;
-        }
-
-        if (state === 'backtick') {
-            if (char === '`' && next === '`') {
-                index += 1;
-            } else if (char === '`') {
-                state = null;
-            }
-            continue;
-        }
-
-        if (state === 'bracket') {
-            if (char === ']' && next === ']') {
-                index += 1;
-            } else if (char === ']') {
-                state = null;
-            }
-            continue;
-        }
-
-        if (char === '-' && next === '-') {
-            index += 1;
-            state = 'lineComment';
-        } else if (char === '/' && next === '*') {
-            index += 1;
-            state = 'blockComment';
-        } else if (char === "'") {
-            state = 'singleQuote';
-        } else if (char === '"') {
-            state = 'doubleQuote';
-        } else if (char === '`') {
-            state = 'backtick';
-        } else if (char === '[') {
-            state = 'bracket';
-        }
+        if (!parts.length) continue;
+        matches.push({ index: create.start.idx, line: create.start.line, column: create.start.col,
+            identifierIndex: first.start.idx, identifierLine: first.start.line, identifierColumn: first.start.col,
+            identifier: source.slice(first.start.idx, last.end.idx), tableName: parts[parts.length - 1], tableParts: parts });
     }
-
-    return state === null;
-}
-
-function skipWhitespace(sql, index) {
-    let nextIndex = index;
-    while (nextIndex < sql.length && /\s/.test(sql[nextIndex])) {
-        nextIndex += 1;
-    }
-    return nextIndex;
-}
-
-function readQuotedIdentifierPart(sql, index, openChar, closeChar = openChar) {
-    let nextIndex = index + 1;
-    let value = '';
-
-    while (nextIndex < sql.length) {
-        const char = sql[nextIndex];
-        const next = sql[nextIndex + 1];
-
-        if (char === closeChar && next === closeChar) {
-            value += closeChar;
-            nextIndex += 2;
-            continue;
-        }
-
-        if (char === closeChar) {
-            return {
-                raw: sql.slice(index, nextIndex + 1),
-                value,
-                endIndex: nextIndex + 1,
-            };
-        }
-
-        value += char;
-        nextIndex += 1;
-    }
-
-    return null;
-}
-
-function readBareIdentifierPart(sql, index) {
-    let nextIndex = index;
-    while (nextIndex < sql.length && !/[\s().,;]/.test(sql[nextIndex])) {
-        nextIndex += 1;
-    }
-
-    const value = sql.slice(index, nextIndex);
-    if (!value) return null;
-
-    return {
-        raw: value,
-        value,
-        endIndex: nextIndex,
-    };
-}
-
-function readIdentifierPart(sql, index) {
-    const char = sql[index];
-    if (char === '"') return readQuotedIdentifierPart(sql, index, '"');
-    if (char === '`') return readQuotedIdentifierPart(sql, index, '`');
-    if (char === '[') return readQuotedIdentifierPart(sql, index, '[', ']');
-    return readBareIdentifierPart(sql, index);
-}
-
-function parseSqlIdentifierAt(sql, startIndex) {
-    const safeSql = normalizeSql(sql);
-    const parts = [];
-    const rawStart = skipWhitespace(safeSql, startIndex);
-    let index = rawStart;
-    let rawEnd = rawStart;
-
-    while (index < safeSql.length) {
-        index = skipWhitespace(safeSql, index);
-        const part = readIdentifierPart(safeSql, index);
-        if (!part) break;
-
-        parts.push(part.value);
-        rawEnd = part.endIndex;
-        index = skipWhitespace(safeSql, part.endIndex);
-
-        if (safeSql[index] !== '.') {
-            break;
-        }
-
-        index += 1;
-    }
-
-    if (parts.length === 0) return null;
-
-    return {
-        parts,
-        raw: safeSql.slice(rawStart, rawEnd),
-        startIndex: rawStart,
-        endIndex: index,
-    };
-}
-
-function cleanIdentifierTextPart(part) {
-    const value = normalizeSql(part).trim();
-    if (!value) return '';
-
-    if (value.startsWith('"') && value.endsWith('"')) {
-        return value.slice(1, -1).replace(/""/g, '"');
-    }
-    if (value.startsWith('`') && value.endsWith('`')) {
-        return value.slice(1, -1).replace(/``/g, '`');
-    }
-    if (value.startsWith('[') && value.endsWith(']')) {
-        return value.slice(1, -1).replace(/]]/g, ']');
-    }
-
-    return value;
-}
-
-function splitIdentifierText(value) {
-    const text = normalizeSql(value).trim();
-    if (!text) return [];
-
-    const parts = [];
-    let current = '';
-    let state = null;
-
-    for (let index = 0; index < text.length; index += 1) {
-        const char = text[index];
-        const next = text[index + 1];
-
-        if (state === 'doubleQuote') {
-            current += char;
-            if (char === '"' && next === '"') {
-                current += next;
-                index += 1;
-            } else if (char === '"') {
-                state = null;
-            }
-            continue;
-        }
-
-        if (state === 'backtick') {
-            current += char;
-            if (char === '`' && next === '`') {
-                current += next;
-                index += 1;
-            } else if (char === '`') {
-                state = null;
-            }
-            continue;
-        }
-
-        if (state === 'bracket') {
-            current += char;
-            if (char === ']' && next === ']') {
-                current += next;
-                index += 1;
-            } else if (char === ']') {
-                state = null;
-            }
-            continue;
-        }
-
-        if (char === '"') {
-            state = 'doubleQuote';
-            current += char;
-        } else if (char === '`') {
-            state = 'backtick';
-            current += char;
-        } else if (char === '[') {
-            state = 'bracket';
-            current += char;
-        } else if (char === '.') {
-            parts.push(cleanIdentifierTextPart(current));
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-
-    parts.push(cleanIdentifierTextPart(current));
-    return parts.filter(Boolean);
+    cachedDeclarations = { sql: source, matches };
+    return matches;
 }
 
 function normalizeIdentifierForCompare(value) {
@@ -689,82 +535,76 @@ function identifierPartsEqual(leftParts, rightParts) {
     return leftParts.every((part, index) => part === rightParts[index]);
 }
 
-function withDefaultSchema(parts) {
-    return parts.length === 1 && !parts[0].includes('.') ? [DEFAULT_SCHEMA_NAME, ...parts] : parts;
+function withDefaultSchema(parts, defaultSchema) {
+    return parts.length === 1 && !parts[0].includes('.') ? [defaultSchema, ...parts] : parts;
 }
 
-function identifierPartsMatch(candidateParts, targetParts) {
+function identifierPartsMatchScore(candidateParts, targetParts, defaultSchema = DEFAULT_SCHEMA_NAME) {
+    const exactCandidate = candidateParts.map((part) => normalizeSql(part).trim().replace(/\s+/g, ' ')).filter(Boolean);
+    const exactTarget = targetParts.map((part) => normalizeSql(part).trim().replace(/\s+/g, ' ')).filter(Boolean);
     const candidate = normalizedIdentifierParts(candidateParts);
     const target = normalizedIdentifierParts(targetParts);
-    if (candidate.length === 0 || target.length === 0) return false;
+    if (candidate.length === 0 || target.length === 0) return 0;
 
     if (target.length === 1) {
-        return candidate[candidate.length - 1] === target[0];
+        if (candidate[candidate.length - 1] !== target[0]) return 0;
+        return exactCandidate[exactCandidate.length - 1] === exactTarget[0] ? 2 : 1;
     }
 
-    const candidateWithDefault = withDefaultSchema(candidate);
-    const targetWithDefault = withDefaultSchema(target);
-    if (identifierPartsEqual(candidateWithDefault, targetWithDefault)) return true;
+    const candidateWithDefault = withDefaultSchema(candidate, defaultSchema);
+    const targetWithDefault = withDefaultSchema(target, defaultSchema);
+    if (!identifierPartsEqual(candidateWithDefault, targetWithDefault)) return 0;
 
-    return false;
+    const exactCandidateWithDefault = withDefaultSchema(exactCandidate, defaultSchema);
+    const exactTargetWithDefault = withDefaultSchema(exactTarget, defaultSchema);
+    return identifierPartsEqual(exactCandidateWithDefault, exactTargetWithDefault) ? 2 : 1;
+}
+
+function chooseDeclaration(matches, targetParts, defaultSchema = DEFAULT_SCHEMA_NAME) {
+    const scored = matches.map((match) => ({ ...match, identityMatchScore: identifierPartsMatchScore(match.tableParts, targetParts, defaultSchema) })).filter((match) => match.identityMatchScore > 0);
+    const best = Math.max(0, ...scored.map((match) => match.identityMatchScore));
+    const candidates = scored.filter((match) => match.identityMatchScore === best);
+    return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function findCreateTableMatchInSql(sql, tableName) {
-    const safeSql = normalizeSql(sql);
-    const targetParts = splitIdentifierText(tableName);
-    if (targetParts.length === 0) return null;
+    const targetParts = identifierPartsFromText(tableName).map((part) => part.value);
+    return targetParts.length ? chooseDeclaration(readTableDeclarations(sql), targetParts) : null;
+}
 
-    // Regex finds only CREATE TABLE prefixes. Identifier parsing then verifies
-    // schema-qualified and quoted names while `isCodePosition` skips comments
-    // and string literals.
-    const prefixRegex = new RegExp(CREATE_TABLE_PREFIX_REGEX.source, CREATE_TABLE_PREFIX_REGEX.flags);
-    let match;
-
-    while ((match = prefixRegex.exec(safeSql))) {
-        if (!isCodePosition(safeSql, match.index)) continue;
-
-        const identifier = parseSqlIdentifierAt(safeSql, prefixRegex.lastIndex);
-        if (!identifier || !identifierPartsMatch(identifier.parts, targetParts)) continue;
-
-        const start = getLineColumnAtIndex(safeSql, match.index);
-        const identifierStart = getLineColumnAtIndex(safeSql, identifier.startIndex);
-
-        return {
-            index: match.index,
-            line: start.line,
-            column: start.column,
-            identifierIndex: identifier.startIndex,
-            identifierLine: identifierStart.line,
-            identifierColumn: identifierStart.column,
-            identifier: identifier.raw,
-            tableName: identifier.parts[identifier.parts.length - 1],
-            tableParts: identifier.parts,
-        };
-    }
-
-    return null;
+function readTabOwners(tabs) {
+    // Retain one workspace index, not a SQL history. Tab titles and membership
+    // are checked too; cached locations must always expose the current tab.
+    const signature = tabs.map((tab) => [tab.id, tab.title, tab.sql, Boolean(tab.isInactive)]);
+    if (cachedOwners && signature.length === cachedOwners.signature.length && signature.every((row, i) => row.every((value, j) => value === cachedOwners.signature[i][j]))) return cachedOwners;
+    const combined = buildCombinedSql(tabs);
+    const schema = sqlToErdSchema(combined.sql);
+    const declarations = new Map(tabs.filter((tab) => !tab.isInactive).map((tab) => [tab.id, readTableDeclarations(tab.sql)]));
+    const tables = schema.tables.map((table) => {
+        const index = table.sourcePosition?.index;
+        const range = combined.ranges.find((r) => !r.isInactive && index >= r.start && index < r.end);
+        const tab = range && tabs.find((t) => t.id === range.id);
+        const match = tab && declarations.get(tab.id).find((declaration) => declaration.index === index - range.start);
+        const prefix = table.schemaName ? `${table.schemaName}.` : '';
+        const leaf = prefix && table.fullName?.startsWith(prefix) ? table.fullName.slice(prefix.length) : table.fullName || table.name;
+        return { table, parts: prefix ? [table.schemaName, leaf] : [leaf], location: match ? { tab, tabId: tab.id, line: match.line, column: match.column, match: { ...match, identityMatchScore: 2 } } : null };
+    });
+    cachedOwners = { signature, tables, defaultSchema: getSqlDialectProfile(schema.dialect).defaultSchema || DEFAULT_SCHEMA_NAME };
+    return cachedOwners;
 }
 
 export function findSqlTabTableLocation(tabs, tableName) {
     if (!tableName || !Array.isArray(tabs)) return null;
-
-    // Inactive tabs are saved drafts only. They do not own rendered ERD tables,
-    // parse diagnostics, table jumps, or table-deletion targets.
-    for (const tab of tabs) {
-        if (tab?.isInactive) continue;
-        const match = findCreateTableMatchInSql(tab?.sql, tableName);
-        if (match) {
-            return {
-                tab,
-                tabId: tab.id,
-                line: match.line,
-                column: match.column,
-                match,
-            };
-        }
-    }
-
-    return null;
+    const { tables, defaultSchema } = readTabOwners(tabs);
+    // Resolve the renderer's exact display identity first. Only surviving
+    // CREATE origins own ERD tables; ALTER renames never transfer ownership.
+    const exact = tables.filter((entry) => entry.table.name === tableName);
+    if (exact.length) return exact.length === 1 ? exact[0].location : null;
+    const targetParts = identifierPartsFromText(tableName).map((part) => part.value);
+    const candidates = tables.map((entry) => ({ ...entry, score: identifierPartsMatchScore(entry.parts, targetParts, defaultSchema) })).filter((entry) => entry.score > 0);
+    const best = Math.max(0, ...candidates.map((entry) => entry.score));
+    const matches = candidates.filter((entry) => entry.score === best);
+    return matches.length === 1 ? matches[0].location : null;
 }
 
 export function findSqlTabForTable(tabs, tableName) {

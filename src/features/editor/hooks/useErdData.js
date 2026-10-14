@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
-import { getLocalDocument } from '@/features/files/lib/localFileStore';
+import { getLocalToolDocument } from '@/features/files/lib/localFileStore';
+import { FILE_KINDS } from '@/features/files/lib/fileDocuments';
 
 const createDefaultContext = () => ({
     tablePositions: {},
@@ -19,7 +20,7 @@ const createDefaultContext = () => ({
     headerActionsAlwaysVisible: true,
 });
 
-export function useErdData(index) {
+export function useErdData(index, initialDocument = null) {
     const { sqlInput, setSqlInput, updateSchema } = useContext(RootLayoutContext);
 
     // General State
@@ -58,6 +59,7 @@ export function useErdData(index) {
     const erdContextRef = useRef(createDefaultContext());
     const isLoadingRef = useRef(false);
     const prevIndexRef = useRef(null);
+    const prevInitialDocumentRef = useRef(null);
     const loadSeqRef = useRef(0);
 
     // Reset AI-related UI/state whenever route file changes
@@ -165,6 +167,8 @@ export function useErdData(index) {
     useEffect(() => {
         const indexChanged = prevIndexRef.current !== index;
         prevIndexRef.current = index;
+        const transferChanged = prevInitialDocumentRef.current !== initialDocument;
+        prevInitialDocumentRef.current = initialDocument;
         // Invalidate older route work before handling the next document.
         const loadId = ++loadSeqRef.current;
 
@@ -172,11 +176,11 @@ export function useErdData(index) {
             if (index === 'new') {
                 // Reset state when navigating TO /e/new (including first mount).
                 // Skip duplicate resets so in-progress work survives rerenders.
-                if (indexChanged) {
+                if (indexChanged || transferChanged) {
                     setIsNewFile(true);
                     setIsOwner(true);
-                    setSqlInput('');
-                    setFileName('untitled');
+                    setSqlInput(initialDocument?.sql || '');
+                    setFileName(initialDocument?.name || 'untitled');
                     setOriginalData({ id: null, uuid: null, created_at: null, updated_at: null, sql: '', fileName: 'untitled', context: null });
                     erdContextRef.current = createDefaultContext();
                     setHasUnsavedChanges(false);
@@ -192,7 +196,7 @@ export function useErdData(index) {
                 isLoadingRef.current = true;
                 setIsLoading(true);
 
-                const data = getLocalDocument(index);
+                const data = getLocalToolDocument(index, FILE_KINDS.SQL_ERD);
 
                 // Discard stale result — a newer load was triggered
                 if (loadSeqRef.current !== loadId) return;
@@ -224,7 +228,16 @@ export function useErdData(index) {
                 setLoadVersion((version) => version + 1);
             } catch (error) {
                 if (loadSeqRef.current !== loadId) return;
-                console.error('Failed to load local diagram:', error);
+                // A failed file switch must not leave the previous document editable.
+                setIsNewFile(false);
+                setIsOwner(false);
+                setSqlInput('');
+                setFileName('untitled');
+                erdContextRef.current = createDefaultContext();
+                setOriginalData({ sql: '', fileName: 'untitled', context: null });
+                updateSchema('');
+                setSchemaVersion((version) => version + 1);
+                setLoadVersion((version) => version + 1);
                 setError('Failed to load local diagram: ' + error.message);
             } finally {
                 if (loadSeqRef.current === loadId) {
@@ -235,7 +248,7 @@ export function useErdData(index) {
         };
 
         loadErdData();
-    }, [index, setSqlInput]);
+    }, [index, initialDocument, setSqlInput, updateSchema]);
 
     return {
         sqlInput,

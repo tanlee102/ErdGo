@@ -11,6 +11,24 @@
     color: var(--color-text);
 }
 
+/* Only table forms use the bounded compact shell; long schemas scroll inside
+   it while the title and Save/Insert controls stay reachable on small screens. */
+.table-form-modal .modal-content {
+    width: calc(100% - 24px); max-width: 640px; max-height: calc(100dvh - 32px);
+    margin-top: 16px; margin-bottom: 16px; overflow: hidden;
+}
+.table-form-modal .modal-body { padding: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.table-form-modal .add-table-actions-row {
+    position: sticky; bottom: 0; z-index: 2; background: var(--dialog-bg); padding: 10px 16px;
+}
+.add-table-preview-details > summary { cursor: pointer; margin-bottom: 0; }
+.add-table-preview-details[open] > summary { margin-bottom: 8px; }
+.table-form-modal .add-table-dialect-pill { padding: 6px 8px; font-size: 12px; }
+.table-form-modal .add-table-dialect-hint { font-size: 11px; margin-top: 6px; }
+.table-form-modal .add-table-column-row { padding: 3px 6px; gap: 4px; }
+.table-form-modal .add-table-col-name,
+.table-form-modal .add-table-col-type { padding: 5px 6px; font-size: 12px; }
+
 /* ─── Dialect selector ──────────────────────────────────────────── */
 .add-table-dialect-section {
     background: linear-gradient(
@@ -26,6 +44,13 @@
     justify-content: space-between;
     gap: 10px;
     flex-wrap: wrap;
+}
+
+.add-table-dialect-hint {
+    margin-top: 8px;
+    color: var(--muted, #888);
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 .add-table-dialect-pills {
@@ -134,7 +159,7 @@
 .add-table-toggle.is-checked::before {
     background: var(--theme-color);
     border-color: var(--theme-color);
-    box-shadow: inset 0 0 0 2.5px var(--background);
+    box-shadow: inset 0 0 0 1px var(--background);
 }
 
 /* ─── Section warn pill (e.g. duplicate column count) ───────────── */
@@ -153,7 +178,7 @@
 
 /* ─── Section Blocks ────────────────────────────────────────────── */
 .add-table-section {
-    padding: 16px 20px;
+    padding: 10px 16px;
 }
 
 .add-table-section + .add-table-section {
@@ -171,7 +196,7 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--theme-color);
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     line-height: 1;
 }
 
@@ -201,18 +226,18 @@
 
 .add-table-name-field:focus-within {
     border-color: var(--theme-color);
-    box-shadow: 0 0 0 2.5px rgba(44, 112, 237, 0.18);
+    box-shadow: 0 0 0 1px rgba(44, 112, 237, 0.18);
 }
 
 @supports (color: color-mix(in srgb, red 50%, blue)) {
     .add-table-name-field:focus-within {
-        box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--theme-color) 18%, transparent);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-color) 18%, transparent);
     }
 }
 
 .add-table-name-field.has-error {
     border-color: #e53e3e;
-    box-shadow: 0 0 0 2.5px rgba(229, 62, 62, 0.18);
+    box-shadow: 0 0 0 1px rgba(229, 62, 62, 0.18);
 }
 
 .add-table-name-prefix {
@@ -309,12 +334,12 @@
 
 .add-table-column-row:focus-within {
     border-color: var(--theme-color);
-    box-shadow: 0 0 0 2px rgba(44, 112, 237, 0.14);
+    box-shadow: 0 0 0 1px rgba(44, 112, 237, 0.14);
 }
 
 @supports (color: color-mix(in srgb, red 50%, blue)) {
     .add-table-column-row:focus-within {
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-color) 14%, transparent);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-color) 14%, transparent);
     }
 }
 
@@ -977,7 +1002,7 @@
 
 .add-table-field-input:focus {
     border-color: var(--theme-color);
-    box-shadow: 0 0 0 2.5px rgba(44, 112, 237, 0.15);
+    box-shadow: 0 0 0 1px rgba(44, 112, 237, 0.15);
 }
 
 .add-table-field-input::placeholder {
@@ -1019,7 +1044,7 @@
 
 .add-table-field-select:focus {
     border-color: var(--theme-color);
-    box-shadow: 0 0 0 2.5px rgba(44, 112, 237, 0.15);
+    box-shadow: 0 0 0 1px rgba(44, 112, 237, 0.15);
 }
 
 .add-table-field-select:disabled {

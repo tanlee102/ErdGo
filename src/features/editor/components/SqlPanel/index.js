@@ -384,7 +384,7 @@ export default function SqlPanel({ splitter, erdData, aiDiff, sqlTabs, saveOrUpd
             {isDocumentAiReview && (
                 <div className="ai-tab-review-summary ai-tab-review-summary-warning" role="status">
                     <strong>AI review</strong>
-                    <span>This edit crosses tab boundaries. Accepting it will replace the affected SQL with one tab.</span>
+                    <span>This review updates the SQL workspace. Tabs are kept when changes can be assigned safely.</span>
                 </div>
             )}
 
@@ -470,7 +470,7 @@ export default function SqlPanel({ splitter, erdData, aiDiff, sqlTabs, saveOrUpd
                 isCollapsed={isChatCollapsed}
             />
 
-            <StatusBar schemaVersion={erdData.schemaVersion} schemaQuality={schemaQuality} />
+            <StatusBar schemaVersion={erdData.schemaVersion} schemaQuality={schemaQuality} dialectDetection={sqlTabs.dialectDetection} />
         </div>
     );
 }

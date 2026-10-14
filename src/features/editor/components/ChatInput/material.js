@@ -3,7 +3,7 @@ import { parseResponse, applyDiffs } from '@/features/editor/lib/diffParser.js';
 import { formatAiTabWorkspace } from '@/features/editor/lib/aiTabProtocol.js';
 
 // Compact and stateless: prioritize parser grammar and edit logic over a SQL syntax catalog.
-export const diffSystemInstruction = `You are ERD Go's SQL edit engine. Return the smallest correct, parser-safe response for the supplied request and SQL context.
+export const diffSystemInstruction = `You are Erd Go's SQL edit engine. Return the smallest correct, parser-safe response for the supplied request and SQL context.
 
 = DECISION =
 - Each request is isolated. Read only the supplied current SQL or tab workspace and user request.
@@ -56,11 +56,14 @@ export function buildGeminiGenerationConfig(model, { temperature = DEFAULTS.temp
     const isGemini3 = /^gemini-3(?:[.-]|$)/.test(String(model || ''));
 
     if (isGemini3) {
+        // Gemini 3.8 Flash rejects MINIMAL, as do Gemini 3 Pro models.
+        // Other listed Gemini 3 Flash models support the lower reasoning level.
+        const requiresLowThinking = model === 'gemini-3.8-flash' || String(model).includes('-pro');
         return {
             systemInstruction: diffSystemInstruction,
             maxOutputTokens,
             thinkingConfig: {
-                thinkingLevel: String(model).includes('-pro') ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL,
+                thinkingLevel: requiresLowThinking ? ThinkingLevel.LOW : ThinkingLevel.MINIMAL,
             },
         };
     }
@@ -69,7 +72,8 @@ export function buildGeminiGenerationConfig(model, { temperature = DEFAULTS.temp
         systemInstruction: diffSystemInstruction,
         temperature,
         maxOutputTokens,
-        thinkingConfig: { thinkingBudget: 0 },
+        // Gemini 2.5 Pro cannot disable thinking; 128 is its minimum budget.
+        thinkingConfig: { thinkingBudget: model === 'gemini-2.5-pro' ? 128 : 0 },
     };
 }
 

@@ -1341,7 +1341,11 @@ function evaluateRankingWindow(expr, subjects) {
 
         ordered.forEach((item, position) => {
             const peer = previous && sameWindowOrderValues(previous.orderValues, item.orderValues, item.subject.context?.dialect);
-            const frame = expr.frame ? windowFrameEntries(expr.frame, ordered, position) : ordered;
+            const frame = expr.frame
+                ? windowFrameEntries(expr.frame, ordered, position)
+                : expr.orderBy.length > 0
+                    ? defaultOrderedFrameEntries(ordered, position, item.subject.context?.dialect)
+                    : ordered;
             if (!peer) {
                 denseRank += 1;
                 rank = position + 1;
@@ -1359,7 +1363,7 @@ function evaluateRankingWindow(expr, subjects) {
                     break;
                 case 'NTILE': {
                     const buckets = Number(evaluateScalar(expr.args[0], item.subject.context, item.subject.groupRows));
-                    values[item.index] = buckets > 0 ? Math.min(Math.floor(position * buckets / size) + 1, buckets) : null;
+                    values[item.index] = buckets > 0 ? ntileBucket(position, size, buckets) : null;
                     break;
                 }
                 case 'LAG': {
@@ -1420,6 +1424,18 @@ function orderWindowPartition(partition, orderBy) {
     });
 }
 
+function ntileBucket(position, size, bucketCount) {
+    const smallerBucketSize = Math.floor(size / bucketCount);
+    const largerBucketCount = size % bucketCount;
+    const largerBucketSize = smallerBucketSize + 1;
+    const largerBucketRows = largerBucketCount * largerBucketSize;
+
+    if (position < largerBucketRows) {
+        return Math.floor(position / largerBucketSize) + 1;
+    }
+    return largerBucketCount + Math.floor((position - largerBucketRows) / smallerBucketSize) + 1;
+}
+
 function windowFrameEntries(frame, ordered, position) {
     const size = ordered.length;
     const start = windowFrameBoundIndex(frame.start, position, size, true);
@@ -1452,9 +1468,9 @@ function windowFrameBoundIndex(bound, position, size, isStart) {
     return isStart ? Math.max(0, Math.min(size, index)) : Math.max(-1, Math.min(size - 1, index));
 }
 
-function defaultOrderedAggregateEntries(ordered, position) {
+function defaultOrderedFrameEntries(ordered, position, dialect = 'auto') {
     let end = position;
-    while (end + 1 < ordered.length && sameWindowOrderValues(ordered[position].orderValues, ordered[end + 1].orderValues)) {
+    while (end + 1 < ordered.length && sameWindowOrderValues(ordered[position].orderValues, ordered[end + 1].orderValues, dialect)) {
         end++;
     }
     return ordered.slice(0, end + 1);
@@ -1481,7 +1497,7 @@ function evaluateAggregateWindow(expr, subjects) {
             if (expr.frame) {
                 frameEntries = windowFrameEntries(expr.frame, ordered, position);
             } else if (expr.orderBy.length > 0) {
-                frameEntries = defaultOrderedAggregateEntries(ordered, position);
+                frameEntries = defaultOrderedFrameEntries(ordered, position, item.subject.context?.dialect);
             }
             values[item.index] = evaluateAggregateForSubjects(expr, frameEntries.map((entry) => entry.subject));
         });

@@ -1,4 +1,4 @@
-/** Global toast queue with typed helpers, bounded visibility, timers, and accessible dismissal. */
+/** Global toast queue with typed helpers, optional actions, timers, and accessible dismissal. */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import './index.css';
@@ -50,6 +50,9 @@ function NotificationItem({ item, onDismiss }) {
             <div className="app-toast__content">
                 <div className="app-toast__title">{item.title}</div>
                 <div className="app-toast__message">{item.message}</div>
+                {item.action?.label && typeof item.action.onClick === 'function' && (
+                    <button type="button" className="app-toast__action" onClick={() => { item.action.onClick(); onDismiss(item.id); }}>{item.action.label}</button>
+                )}
             </div>
             <button type="button" className="app-toast__close" onClick={() => onDismiss(item.id)} aria-label="Dismiss notification">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -70,7 +73,7 @@ export function NotificationProvider({ children }) {
     }, []);
 
     // A generated id is both the React key and the stable handle returned for dismissal.
-    const notify = useCallback(({ type = 'info', title, message, duration = DEFAULT_DURATION } = {}) => {
+    const notify = useCallback(({ type = 'info', title, message, action, duration = DEFAULT_DURATION } = {}) => {
         const id = `toast-${Date.now()}-${idRef.current++}`;
         const nextItem = {
             id,
@@ -78,6 +81,7 @@ export function NotificationProvider({ children }) {
             title: getNotificationTitle(type, title),
             message: normalizeMessage(message),
             duration,
+            action,
         };
 
         setItems((current) => [...current, nextItem].slice(-MAX_VISIBLE_NOTIFICATIONS));
@@ -85,7 +89,7 @@ export function NotificationProvider({ children }) {
     }, []);
 
     const notifyError = useCallback((message, options = {}) => notify({ type: 'error', title: options.title, message, duration: options.duration ?? DEFAULT_DURATION }), [notify]);
-    const notifySuccess = useCallback((message, options = {}) => notify({ type: 'success', title: options.title, message, duration: options.duration ?? DEFAULT_DURATION }), [notify]);
+    const notifySuccess = useCallback((message, options = {}) => notify({ type: 'success', title: options.title, message, action: options.action, duration: options.duration ?? DEFAULT_DURATION }), [notify]);
     const notifyWarning = useCallback((message, options = {}) => notify({ type: 'warning', title: options.title, message, duration: options.duration ?? DEFAULT_DURATION }), [notify]);
     const notifyInfo = useCallback((message, options = {}) => notify({ type: 'info', title: options.title, message, duration: options.duration ?? DEFAULT_DURATION }), [notify]);
 

@@ -5,6 +5,7 @@ import runErdScript from '@/lib/genErdScript';
 import { inferRelationships } from '@/lib/relationshipInference';
 import { scoreErdSchema } from '@/lib/schemaQualityScore';
 import { useConfirm } from '@/components/ConfirmDialog';
+import { useNotifications } from '@/components/Notifications';
 
 const RELATIONSHIP_INFERENCE_CONTEXT_KEY = 'relationshipInferenceDecisions';
 
@@ -112,7 +113,6 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
     const knownTableNamesRef = useRef(new Set());
     const knownTablesContextVersionRef = useRef(null);
     const jumpToTableCallbackRef = useRef(null);
-
     // Preferences live in the saved file context rather than local storage.
     // Exact booleans preserve old files safely: missing or malformed keys keep
     // their long-standing off/default behavior without rewriting the file.
@@ -167,6 +167,74 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
         [erdContextRef, isAiPreview],
     );
 
+    const { notifySuccess, notifyWarning } = useNotifications();
+    const handleCanvasSchemaEdit = useCallback((action, options = {}) => {
+        const operate = (opts, change = action) => isAiPreview
+            ? { ok: false, message: 'Finish the AI review before changing the schema.' }
+            : runSqlTabOperation?.('editCanvasSchema', change, opts) || { ok: false, message: 'The SQL editor is not ready yet.' };
+        const report = (result) => {
+            if (result.ok) notifySuccess(result.message, {
+                title: action.kind === 'add-relationship' ? 'Connection added' : action.kind === 'remove-relationship' ? 'Connection deleted' : action.kind === 'add-column' ? 'Column added' : 'Column removed',
+                duration: 10000,
+                action: result.undo ? { label: 'Undo', onClick: () => {
+                    if (!result.undo()) notifyWarning('SQL changed since this action. Undo it in the SQL editor.', { title: 'Undo unavailable' });
+                } } : undefined,
+            });
+            return result;
+        };
+        if (options.preview) return operate(options);
+        if (action.kind === 'remove-relationship') return (async () => {
+            const preview = operate({ preview: true });
+            if (!preview.ok) { notifyWarning(preview.message, { title: 'Connection unchanged' }); return preview; }
+            const label = preview.impacts[0].label;
+            const approved = await confirm({ title: action.relation.composite ? 'Delete composite connection?' : 'Delete connection?', message: `Delete ${label}?\n\n${action.relation.composite ? 'The entire multi-column foreign-key constraint will be removed.' : 'The foreign-key constraint will be removed from SQL.'}\nBoth tables and all columns are kept.`, confirmText: 'Delete connection', tone: 'danger' });
+            if (!approved) return { ok: false, cancelled: true };
+            const result = report(operate({ expectedRevision: preview.revision }));
+            if (!result.ok) notifyWarning(result.message, { title: 'Connection unchanged' });
+            return result;
+        })();
+        if (action.kind !== 'remove-column') return report(operate(options));
+        return (async () => {
+            let requested = action;
+            let preview = operate({ preview: true }, requested);
+            if (!preview.ok && preview.canCascade) { requested = { ...action, cascade: true }; preview = operate({ preview: true }, requested); }
+            if (!preview.ok) {
+                notifyWarning(preview.message, { title: 'Column unchanged' });
+                return preview;
+            }
+            const labels = { 'remove-relationship': 'Connection', 'remove-index': 'Index', 'remove-key': 'Key', 'remove-column': 'Generated column', 'remove-check': 'Check', 'remove-view': 'View', 'remove-trigger': 'Trigger', 'remove-migration': 'Migration change', 'remove-statement': 'SQL statement', 'rewrite-data': 'Keep data' };
+            const impact = preview.impacts.map((i) => `${labels[i.kind] || 'Dependency'}: ${i.label}`).join('\n');
+            const warning = preview.impacts.some((i) => i.kind === 'remove-statement') ? '\n\nSQL statements marked for removal are deleted in full.' : '';
+            const approved = await confirm({ title: requested.cascade ? 'Remove column with dependencies?' : 'Remove column?', message: `Remove ${action.table}.${action.column}?${impact ? `\n\n${requested.cascade ? 'Cascade changes' : 'Also removes'}:\n` + impact : ''}${warning}`, confirmText: requested.cascade ? 'Remove with cascade' : 'Remove column', tone: 'danger' });
+            if (!approved) return { ok: false, cancelled: true };
+            const result = report(operate({ expectedRevision: preview.revision }, requested));
+            if (!result.ok) notifyWarning(result.message, { title: 'Column unchanged' });
+            return result;
+        })();
+    }, [confirm, isAiPreview, notifySuccess, notifyWarning, runSqlTabOperation]);
+    const handleRelationshipReconnectTargets = useCallback((relation, endpoint) => isAiPreview
+        ? { ok: false, targets: [], message: 'Finish the AI review before changing relationships.' }
+        : runSqlTabOperation?.('getRelationshipReconnectTargets', relation, endpoint) || { ok: false, targets: [], message: 'The SQL editor is not ready yet.' }, [isAiPreview, runSqlTabOperation]);
+    const handleRelationshipReconnect = useCallback((relation, endpoint, target, options = {}) => {
+        const result = isAiPreview
+            ? { ok: false, message: 'Finish the AI review before changing relationships.' }
+            : runSqlTabOperation?.('reconnectRelationship', relation, endpoint, target, options) || { ok: false, message: 'The SQL editor is not ready yet.' };
+        if (!options.preview) {
+            if (result.ok && !result.unchanged) {
+                const nextFrom = endpoint === 'from' ? target : relation.from;
+                const nextTo = endpoint === 'to' ? target : relation.to;
+                notifySuccess(`${nextFrom.table}.${nextFrom.column} → ${nextTo.table}.${nextTo.column}`, {
+                    title: 'Relationship SQL updated', duration: 10000,
+                    action: result.undo ? { label: 'Undo', onClick: () => {
+                        if (!result.undo()) notifyWarning('SQL changed since this move. Undo it in the SQL editor.', { title: 'Undo unavailable' });
+                    } } : undefined,
+                });
+            }
+            else if (!result.ok) notifyWarning(result.message, { title: 'Relationship unchanged' });
+        }
+        return result;
+    }, [isAiPreview, runSqlTabOperation, notifySuccess, notifyWarning]);
+
     // Handle jump-to-table from ERD canvas
     const handleJumpToTable = useCallback((tableName) => {
         if (typeof jumpToTableCallbackRef.current === 'function') {
@@ -185,6 +253,10 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
             // fallback preserves legacy single-document behavior.
             const previewFromTabs = runSqlTabOperation?.('getTableDeletionPreview', tableName);
             const preview = previewFromTabs === undefined ? { tableName, owner: null, references: getTableDeletionInfo(sqlInput, tableName).items.filter((item) => item.type !== 'table') } : previewFromTabs;
+            if (preview?.blockedReason) {
+                notifyWarning(preview.blockedReason, { title: 'Table SQL unchanged' });
+                return false;
+            }
             const confirmed = await confirm({
                 title: 'Delete table?',
                 message: buildTableDeletionMessage(tableName, preview),
@@ -219,7 +291,7 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
                 return false;
             }
         },
-        [confirm, isAiPreview, runSqlTabOperation, sqlInput, setSqlInput, schemaRef],
+        [confirm, isAiPreview, runSqlTabOperation, sqlInput, setSqlInput, schemaRef, notifyWarning],
     );
 
     useEffect(() => {
@@ -365,6 +437,13 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
                 inferredRelations: inferredRelationsToRender,
                 onTableDelete: handleTableDelete,
                 onJumpToTable: handleJumpToTable,
+                sqlDialect: schemaRef.current.dialect,
+                // The renderer receives a JSON clone; native options are hidden
+                // schema metadata and must travel through this read-only bridge.
+                getCanvasColumnOptions: (table) => schemaRef.current.tables.find((model) => model.name === table.name)?.options || {},
+                onCanvasSchemaEdit: isAiPreview ? null : handleCanvasSchemaEdit,
+                onRelationshipReconnect: handleRelationshipReconnect,
+                onRelationshipReconnectTargets: handleRelationshipReconnectTargets,
                 onContextChange: onErdContextChange,
                 tableOwners,
                 // Both visual controls are file preferences. They affect only
@@ -386,7 +465,7 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
                     setMinimapVisibleRef.current = null;
                 });
         }
-    }, [flag, isEditorReady, theme, fullConnect, handleTableDelete, handleJumpToTable, onErdContextChange, schemaRef, isLoading, erdContextRef, isAiPreview, runSqlTabOperation, showTableOwnerLabels, headerActionsAlwaysVisible, inferredRelationsToRender, contextLoadVersion]);
+    }, [flag, isEditorReady, theme, fullConnect, handleTableDelete, handleCanvasSchemaEdit, handleJumpToTable, handleRelationshipReconnect, handleRelationshipReconnectTargets, onErdContextChange, schemaRef, isLoading, erdContextRef, isAiPreview, runSqlTabOperation, showTableOwnerLabels, headerActionsAlwaysVisible, inferredRelationsToRender, contextLoadVersion]);
 
     const triggerAutoColor = useCallback(() => {
         autoColorNextRef.current = true;
@@ -429,6 +508,7 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
         erdContextVersion,
         setErdContextVersion,
         handleTableDelete,
+        handleJumpToTable,
         triggerAutoColor,
         applyNewTableDefaults,
         jumpToTableCallbackRef,

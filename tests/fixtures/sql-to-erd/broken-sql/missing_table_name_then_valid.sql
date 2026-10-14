@@ -1,0 +1,7 @@
+CREATE TABLE (
+    id INT PRIMARY KEY
+);
+
+CREATE TABLE recovered (
+    id INT PRIMARY KEY
+);

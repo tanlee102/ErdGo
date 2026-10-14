@@ -2,7 +2,7 @@
  * Runtime values and generators shared by Data View statement executors.
  *
  * DEFAULT_SENTINEL is deliberately a Symbol so user data can never collide
- * with it. UUID generation remains nondeterministic production behavior; callers
+ * with it. UUID generation remains nondeterministic production behavior; tests
  * should validate UUID shape and uniqueness rather than exact values.
  */
 export const DEFAULT_SENTINEL = Symbol('DEFAULT');

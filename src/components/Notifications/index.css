@@ -111,3 +111,13 @@
         animation: none;
     }
 }
+.app-toast__action {
+    margin-top: 6px;
+    padding: 3px 8px;
+    border: 1px solid currentColor;
+    border-radius: 5px;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+}

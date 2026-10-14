@@ -1,6 +1,6 @@
 // ============================================================================
 // SHARED DIFF PARSER & MATCHER
-// Used by the local bring-your-own-key Gemini editing workflow.
+// Used by: material.js (client), gemini.js (server), gpt-oss.js (server)
 // ============================================================================
 
 // AI providers return lightweight XML-like diff blocks, not guaranteed-valid

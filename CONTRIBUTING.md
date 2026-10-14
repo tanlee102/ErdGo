@@ -12,7 +12,7 @@ Thank you for helping improve ERD Go. Contributions of every size are welcome—
 ## Development workflow
 
 1. Fork and clone the repository.
-2. Use Node.js 20 or newer and install dependencies with `npm ci`.
+2. Use Node.js 20.19+, 22.13+, or 24+ and install dependencies with `npm ci`.
 3. Create a focused branch from `main`.
 4. Start the app with `npm run dev`.
 5. Make one coherent change and update affected documentation.
@@ -40,7 +40,7 @@ Changes to stored document shapes must keep old, missing, malformed, and unavail
 - Include screenshots for material UI changes.
 - Document new workflows, limitations, persistence keys, or dependency directions.
 - Avoid unrelated formatting or generated-file churn.
-- Confirm lint, build, and relevant manual validation results in the description.
+- Confirm lint, regression tests, build, and relevant browser validation results in the description.
 - Respond constructively to review and keep the branch mergeable.
 
 Maintainers may close proposals that conflict with the project scope, duplicate existing work, or cannot be supported responsibly. This is a scope decision, not a judgment on the effort behind a contribution.
