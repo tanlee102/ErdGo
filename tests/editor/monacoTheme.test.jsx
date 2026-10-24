@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ThemeContext } from '@/contexts/ThemeContext';
 import MonacoEditorWrapper from '@/features/editor/components/MonacoEditorWrapper';
 
-vi.mock('@monaco-editor/react', () => ({
+vi.mock('@/components/CodeEditor', () => ({
     default: ({ theme, options }) => <div data-testid="monaco" data-theme={theme} data-option-theme={options.theme || ''} />,
 }));
 

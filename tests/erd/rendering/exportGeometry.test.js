@@ -17,4 +17,10 @@ describe('optional entire-diagram capture bounds', () => {
         expect(getErdExportBounds([])).toBeNull();
         expect(getErdExportBounds([{ x: 0, y: 0, width: 100, height: 100 }], [{ points: [null, { x: NaN, y: 0 }] }])).toEqual({ x: -114, y: -114, width: 228, height: 228 });
     });
+    it('includes optional group headers and leaves legacy bounds unchanged without groups', () => {
+        const tables = [{ x: 0, y: 0, width: 100, height: 100 }];
+        const groups = [{ x: 0, y: -16, width: 160, height: 180 }];
+        expect(getErdExportBounds(tables, [], groups)).toEqual({ x: -144, y: -170, width: 288, height: 308 });
+        expect(getErdExportBounds(tables)).toEqual(getErdExportBounds(tables, [], []));
+    });
 });

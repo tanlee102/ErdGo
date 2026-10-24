@@ -26,6 +26,55 @@
     background-color: var(--erd-bg);
 }
 
+/* Delayed first-paint feedback uses the same compact workspace styling. */
+.erd-render-status {
+    position: absolute;
+    left: 50%;
+    top: 64px;
+    transform: translateX(-50%);
+    z-index: 95;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100% - 32px);
+    box-sizing: border-box;
+    padding: 8px 12px;
+    border: 1px solid var(--action-border);
+    border-radius: 5px;
+    background: var(--dialog-bg);
+    color: var(--muted);
+    box-shadow: 0 2px 8px #0000000a;
+    font: 11px/1.4 var(--font-sans);
+}
+
+.erd-render-spinner {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border: 1.5px solid var(--theme-color);
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: erd-render-spin .8s linear infinite;
+}
+
+.erd-render-status button {
+    padding: 2px 5px;
+    color: var(--action-color);
+    font: inherit;
+    background: var(--button-bg);
+    border: 1px solid var(--action-border);
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.erd-render-status button:focus-visible {
+    outline: 1px solid var(--focus-outline);
+    outline-offset: 2px;
+}
+@keyframes erd-render-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .erd-render-spinner { animation: none; } }
+
 /* ERD Canvas */
 #erd-canvas {
     display: block;

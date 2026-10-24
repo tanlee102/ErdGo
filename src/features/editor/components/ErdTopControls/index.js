@@ -88,7 +88,11 @@ export default function ErdTopControls({ erdRendering, toggleTheme, viewMode, on
             )}
 
             <div className="erd-export-wrap" style={viewMode !== 'erd' ? { display: 'none' } : undefined}>
-                <button className="erd-top-btn" id="export-btn" aria-label="Export ERD" data-erd-help="Export as PNG, SVG, or PDF" type="button" aria-haspopup="dialog" aria-expanded={isExportOpen && viewMode === 'erd'} onClick={() => setIsExportOpen((open) => !open)}>
+                <button className="erd-top-btn" id="export-btn" aria-label="Export ERD" data-erd-help="Export as PNG, SVG, or PDF" type="button" aria-haspopup="dialog" aria-expanded={isExportOpen && viewMode === 'erd'} onClick={(event) => {
+                    // Firefox/WebKit on macOS need an explicit opener focus.
+                    event.currentTarget.focus({ preventScroll: true });
+                    setIsExportOpen((open) => !open);
+                }}>
                     <ExportIcon width="22px" height="22px" />
                 </button>
                 {isExportOpen && viewMode === 'erd' && (

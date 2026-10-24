@@ -17,6 +17,7 @@ const PRESETS = [
 
 export default function ErdExportDialog({ erdRendering, onClose }) {
     const dialogRef = useRef(null);
+    const triggerRef = useRef(null);
     const busyRef = useRef(false);
     const id = useId();
     const [format, setFormat] = useState('png');
@@ -26,9 +27,12 @@ export default function ErdExportDialog({ erdRendering, onClose }) {
     const [error, setError] = useState('');
 
     useEffect(() => {
-        const trigger = document.activeElement;
-        dialogRef.current.showModal();
-        return () => trigger?.focus?.();
+        // StrictMode replays this effect while the native dialog is still open;
+        // keep the original opener instead of capturing a dialog control then.
+        triggerRef.current ||= document.activeElement;
+        if (!dialogRef.current.open) dialogRef.current.showModal();
+        dialogRef.current.querySelector('button:not(:disabled)')?.focus();
+        return () => { if (triggerRef.current?.isConnected) triggerRef.current.focus?.({ preventScroll: true }); };
     }, []);
 
     const download = async (event) => {
@@ -54,13 +58,15 @@ export default function ErdExportDialog({ erdRendering, onClose }) {
         <dialog ref={dialogRef} className="erd-export-dialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}
             onKeyDown={(event) => {
                 if (event.key !== 'Tab') return;
-                // Keep keyboard cycling inside the dialog instead of moving to browser chrome.
+                // Explicit steps include buttons even when macOS browser Tab
+                // preferences skip them; native arrow keys still own radio groups.
                 const controls = [...event.currentTarget.querySelectorAll('button:not(:disabled), input:checked:not(:disabled), select:not(:disabled)')];
                 const first = controls[0];
-                const last = controls.at(-1);
-                if (!first) { event.preventDefault(); return; }
-                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+                event.preventDefault();
+                if (!first) { event.currentTarget.focus(); return; }
+                const current = controls.indexOf(document.activeElement);
+                const origin = current < 0 ? (event.shiftKey ? 0 : -1) : current;
+                controls[(origin + (event.shiftKey ? -1 : 1) + controls.length) % controls.length].focus();
             }}
             onCancel={(event) => { event.preventDefault(); if (!busyRef.current) onClose(); }}
             onClick={(event) => {
@@ -102,7 +108,7 @@ export default function ErdExportDialog({ erdRendering, onClose }) {
                         <option value="viewport">Current view</option>
                         <option value="diagram">Entire diagram</option>
                     </select>
-                    <p className="erd-export-note">{scope === 'diagram' ? 'Includes all tables and connectors with padding.' : 'Exports the current zoom and visible area.'} Preserves proportions, up to 8192px per side.</p>
+                    <p className="erd-export-note">{scope === 'diagram' ? `Includes all tables${erdRendering.tableGroups ? ', groups,' : ''} and connectors with padding.` : 'Exports the current zoom and visible area.'} Preserves proportions, up to 8192px per side.</p>
                     <p className="erd-export-format-note">{format === 'svg' ? 'SVG contains an embedded PNG, not editable vector shapes.' : format === 'pdf' ? 'One page with an embedded image. Text is not selectable.' : 'High-resolution PNG image.'}</p>
                     {error && <p className="erd-export-error" role="alert">{error}</p>}
                 </div>

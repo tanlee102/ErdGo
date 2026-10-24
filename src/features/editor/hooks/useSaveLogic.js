@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { useNotifications } from '@/components/Notifications';
@@ -6,7 +6,7 @@ import { FILE_NAME_MAX_LENGTH, FILE_NAME_MIN_LENGTH, SQL_MAX_LENGTH, SQL_MIN_LEN
 import { cloneIfPopulatedObject, deepEqual } from '@/utils/objectUtils';
 import { saveLocalDocument } from '@/features/files/lib/localFileStore';
 
-export function useSaveLogic({ index, isNewFile, setIsNewFile, fileName, originalData, setOriginalData, setHasUnsavedChanges, erdContextRef, setErdContextVersion }) {
+export function useSaveLogic({ index, documentKey = index, isLoading = false, isNewFile, setIsNewFile, fileName, originalData, setOriginalData, setHasUnsavedChanges, erdContextRef, setErdContextVersion }) {
     const { sqlInput } = useContext(RootLayoutContext);
     const { notifyError, notifySuccess, notifyWarning } = useNotifications();
     const [isSaving, setIsSaving] = useState(false);
@@ -14,6 +14,13 @@ export function useSaveLogic({ index, isNewFile, setIsNewFile, fileName, origina
     const sqlInputRef = useRef(sqlInput);
     const fileNameRef = useRef(fileName);
     const navigate = useNavigate();
+    const saveTargetRef = useRef(null);
+    const isDocumentReady = !isLoading && (index === 'new' ? isNewFile : !isNewFile && originalData?.uuid === index);
+    const saveTarget = useMemo(() => ({ documentKey, ready: isDocumentReady }), [documentKey, isDocumentReady]);
+    useLayoutEffect(() => {
+        saveTargetRef.current = saveTarget;
+        return () => { saveTargetRef.current = null; };
+    }, [saveTarget]);
 
     useEffect(() => { sqlInputRef.current = sqlInput; }, [sqlInput]);
     useEffect(() => { fileNameRef.current = fileName; }, [fileName]);
@@ -25,6 +32,10 @@ export function useSaveLogic({ index, isNewFile, setIsNewFile, fileName, origina
 
     const saveOrUpdate = useCallback(async (options = {}) => {
         if (isSavingRef.current) return;
+        if (!saveTarget.ready || saveTargetRef.current !== saveTarget) {
+            notifyWarning('This file is not ready to save. Finish loading it or open a new SQL file.', { title: 'Cannot save yet' });
+            return;
+        }
         const sqlToSave = options.sqlOverride ?? sqlInputRef.current;
         const nameToSave = (fileNameRef.current || '').trim();
         if (!sqlToSave || sqlToSave.length < SQL_MIN_LENGTH) {
@@ -72,7 +83,7 @@ export function useSaveLogic({ index, isNewFile, setIsNewFile, fileName, origina
             isSavingRef.current = false;
             setIsSaving(false);
         }
-    }, [erdContextRef, hasChangedDuringSave, index, isNewFile, navigate, notifyError, notifySuccess, notifyWarning, originalData, setErdContextVersion, setHasUnsavedChanges, setIsNewFile, setOriginalData]);
+    }, [saveTarget, erdContextRef, hasChangedDuringSave, index, isNewFile, navigate, notifyError, notifySuccess, notifyWarning, originalData, setErdContextVersion, setHasUnsavedChanges, setIsNewFile, setOriginalData]);
 
     return { saveOrUpdate, isSaving };
 }

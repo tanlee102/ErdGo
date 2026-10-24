@@ -11,13 +11,11 @@ import { useErdData } from '@/features/editor/hooks/useErdData';
 import { useErdRendering } from '@/features/editor/hooks/useErdRendering';
 import { useChangeTracking } from '@/features/editor/hooks/useChangeTracking';
 import { useSaveLogic } from '@/features/editor/hooks/useSaveLogic';
-import { useCanvasResize } from '@/features/editor/hooks/useCanvasResize';
 import { useAiTabDiff } from '@/features/editor/hooks/useAiTabDiff';
 import { useSqlTabs } from '@/features/editor/hooks/useSqlTabs';
 import { useUnsavedChangesWarning } from '@/features/files/hooks/useUnsavedChangesWarning';
 import { sampleDataSQL, sampleSchemaSQL } from '@/features/editor/lib/sampleSQL';
 import { createSqlTab } from '@/features/editor/lib/sqlTabs';
-import { readSqlEditorTransfer } from '@/features/editor/lib/sqlEditorTransfer';
 import { getAiWorkingWorkspace } from '@/features/editor/lib/aiWorkingWorkspace';
 import { createSqlExecutor } from '@/features/data-view/lib/sqlExecutor';
 import TableViewer from '@/features/data-view/components/TableViewer';
@@ -61,7 +59,7 @@ export default function EditorPage() {
     // Get index from params
     const { index } = useParams();
     const location = useLocation();
-    const initialDocument = useMemo(() => index === 'new' ? readSqlEditorTransfer(location.state) : null, [index, location.state]);
+    const newDocumentKey = index === 'new' ? location.key : null;
 
     // Contexts
     const { theme, toggleTheme } = useContext(ThemeContext);
@@ -69,7 +67,7 @@ export default function EditorPage() {
 
     // State for Create New File Dialog
     const [showCreateDialog, setShowCreateDialog] = useState(false);
-    const [dialogShown, setDialogShown] = useState(false);
+    const starterEntryRef = useRef(null);
     const [sqlImportRequestVersion, setSqlImportRequestVersion] = useState(0);
 
     // View mode: 'erd', 'data', or 'query'
@@ -87,29 +85,26 @@ export default function EditorPage() {
         setViewMode(mode);
     }, []);
 
-    const erdData = useErdData(index, initialDocument);
+    const erdData = useErdData(index, newDocumentKey);
     useEffect(() => {
         document.title = `${erdData.fileName || 'Untitled'} — ERD Go`;
     }, [erdData.fileName]);
 
     // Show dialog when index is 'new' and not shown before
     useEffect(() => {
-        if (initialDocument) {
-            setShowCreateDialog(false);
-            setDialogShown(true);
-        } else if (index === 'new' && !dialogShown) {
+        if (index === 'new' && starterEntryRef.current !== newDocumentKey) {
             setShowCreateDialog(true);
-            setDialogShown(true);
+            starterEntryRef.current = newDocumentKey;
         } else if (index !== 'new') {
-            setDialogShown(false);
+            setShowCreateDialog(false);
+            starterEntryRef.current = null;
         }
-    }, [index, dialogShown, initialDocument]);
+    }, [index, newDocumentKey]);
 
     // ERD Rendering - must be before splitter to use setErdContextVersion
     const erdRendering = useErdRendering({
         theme,
         erdContextRef: erdData.erdContextRef,
-        isEditorReady: erdData.isEditorReady,
         isLoading: erdData.isLoading,
         isAiPreview: erdData.showAiSuggestions || erdData.currentlyProcessingAi,
         contextLoadVersion: erdData.loadVersion,
@@ -220,7 +215,6 @@ export default function EditorPage() {
     });
 
     // Canvas resize
-    useCanvasResize(erdData.isEditorReady);
 
     // AI Diff logic
     const aiDiff = useAiTabDiff({
@@ -353,6 +347,8 @@ export default function EditorPage() {
     // Save logic
     const { saveOrUpdate, isSaving } = useSaveLogic({
         index,
+        documentKey: newDocumentKey ?? index,
+        isLoading: erdData.isLoading,
         isNewFile: erdData.isNewFile,
         setIsNewFile: erdData.setIsNewFile,
         fileName: erdData.fileName,
@@ -431,8 +427,10 @@ export default function EditorPage() {
 
     const dataContent = useMemo(() => {
         if (!dataViewResult) return null;
-        return <TableViewer key={index} tables={new Map(dataViewResult.tables)} types={new Map(dataViewResult.types)} executionLog={dataViewResult.log} />;
-    }, [dataViewResult, index]);
+        return <TableViewer key={index} tables={new Map(dataViewResult.tables)} types={new Map(dataViewResult.types)} executionLog={dataViewResult.log}
+            getSampleDataContext={sqlTabs.getSampleDataContext} onInsertSampleData={sqlTabs.insertSampleDataTab}
+            sampleDataDisabledReason={erdData.currentlyProcessingAi || erdData.showAiSuggestions ? 'Finish the AI review before generating sample data.' : ''} />;
+    }, [dataViewResult, index, sqlTabs.getSampleDataContext, sqlTabs.insertSampleDataTab, erdData.currentlyProcessingAi, erdData.showAiSuggestions]);
 
     const queryContent = useMemo(
         () => (

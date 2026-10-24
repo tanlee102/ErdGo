@@ -1,0 +1,128 @@
+/* Match the neighboring Table navigator/Colors popups, including their toolbar arrow. */
+#table-groups-btn > svg { width: 20px; height: 20px; flex: none; display: block; }
+
+.erd-table-groups {
+    --group-popup-surface: var(--button-bg);
+    position: fixed;
+    z-index: 2100;
+    box-sizing: border-box;
+    width: min(320px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    display: flex;
+    flex-direction: column;
+    color: var(--foreground);
+    background: var(--group-popup-surface);
+    border: 1px solid var(--action-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px #0f172a1f, 0 2px 8px #0f172a14;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.4;
+    animation: tableGroupsIn .15s ease-out;
+}
+.dark-theme .erd-table-groups { box-shadow: 0 8px 32px #0006, 0 2px 8px #0004; }
+@keyframes tableGroupsIn { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .erd-table-groups { animation: none; } }
+
+.erd-table-groups::before,
+.erd-table-groups::after {
+    content: '';
+    position: absolute;
+    top: var(--table-groups-arrow-top, 50%);
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+.erd-table-groups[data-placement='left']::before { right: -9px; border-left: 8px solid var(--action-border); }
+.erd-table-groups[data-placement='left']::after { right: -8px; border-left: 8px solid var(--group-popup-surface); }
+.erd-table-groups[data-placement='right']::before { left: -9px; border-right: 8px solid var(--action-border); }
+.erd-table-groups[data-placement='right']::after { left: -8px; border-right: 8px solid var(--group-popup-surface); }
+.erd-table-groups[data-placement='stacked']::before,
+.erd-table-groups[data-placement='stacked']::after { display: none; }
+
+.erd-table-groups button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; color: inherit; font: inherit; cursor: pointer; }
+.erd-table-groups button:disabled { cursor: default; opacity: .45; }
+.erd-table-groups button:focus-visible { outline: 1px solid var(--focus-outline); outline-offset: 1px; }
+.erd-table-groups svg { flex-shrink: 0; }
+.erd-table-groups input { font: inherit; }
+.erd-table-groups input:focus-visible { outline: none; border-color: var(--focus-outline); box-shadow: none; }
+
+.erd-table-groups-heading { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--action-border) 60%, transparent); }
+.erd-table-groups-heading > svg { color: var(--foreground); opacity: .55; }
+.erd-table-groups h2 { flex: 1; margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: .01em; }
+.erd-table-groups-count { padding: 2px 7px; border-radius: 10px; color: var(--theme-color); background: color-mix(in srgb, var(--theme-color) 12%, transparent); font-size: 10px; font-weight: 600; line-height: 1.3; }
+.erd-table-groups-heading > button { width: 24px; height: 24px; flex-shrink: 0; padding: 4px; border: 0; border-radius: 5px; color: var(--muted); background: transparent; }
+.erd-table-groups-heading > button:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 7%, transparent); }
+
+/* The body scrolls independently so actions remain reachable on short screens. */
+.erd-table-groups form { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.erd-table-groups-body { min-height: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent; }
+.erd-table-groups-field { display: flex; flex-direction: column; gap: 5px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
+.erd-table-groups-field > input,
+.erd-table-groups-search > input { width: 100%; min-width: 0; height: 30px; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--action-border); border-radius: 5px; color: var(--foreground); background: var(--panel-header-bg); font-size: 11.5px; font-weight: 400; transition: border-color .12s, background-color .12s; }
+.erd-table-groups-field > input:hover,
+.erd-table-groups-search > input:hover { border-color: var(--action-hover-border); }
+.erd-table-groups-field > input:focus,
+.erd-table-groups-search > input:focus { background: var(--background); }
+.erd-table-groups input::placeholder { color: color-mix(in srgb, var(--foreground) 40%, transparent); }
+
+.erd-table-groups-colors { display: flex; align-items: center; gap: 6px; margin: 13px 0 15px; padding: 0; border: 0; }
+.erd-table-groups-colors legend { margin-bottom: 7px; padding: 0; color: var(--muted); font-size: 10.5px; font-weight: 600; }
+.erd-table-groups-colors > button { width: 23px; height: 23px; flex-shrink: 0; padding: 0; border: 1px solid #00000018; border-radius: 4px; background: var(--group-color); color: #fff; transition: transform .12s; }
+.erd-table-groups-colors > button:hover { transform: translateY(-1px); }
+.erd-table-groups-colors > button[aria-pressed='true'] { outline: 1px solid var(--group-color); outline-offset: 2px; }
+.erd-table-groups-colors > button:focus-visible { outline: 2px solid var(--focus-outline); outline-offset: 2px; }
+.erd-table-groups-custom-color { display: flex; align-items: center; gap: 5px; margin-left: auto; color: var(--muted); font-size: 10px; }
+.erd-table-groups-custom-color input { width: 23px; height: 23px; box-sizing: border-box; padding: 2px; border: 1px solid var(--action-border); border-radius: 4px; background: var(--background); cursor: pointer; }
+.erd-table-groups-custom-color input:focus-visible { outline: 1px solid var(--focus-outline); outline-offset: 1px; }
+
+.erd-table-groups-section-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; color: var(--muted); font-size: 10.5px; font-weight: 600; }
+.erd-table-groups-section-label > span:last-child { color: var(--theme-color); font-size: 10px; font-weight: 500; }
+.erd-table-groups-search { position: relative; display: flex; align-items: center; }
+.erd-table-groups-search > svg { position: absolute; left: 9px; color: var(--muted); opacity: .7; pointer-events: none; }
+.erd-table-groups-search:focus-within > svg { color: var(--theme-color); opacity: 1; }
+.erd-table-groups-search > input { padding-left: 29px; }
+.erd-table-groups-members { max-height: min(240px, 32dvh); overflow: auto; margin: 7px -4px -3px; padding: 2px; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--foreground) 18%, transparent) transparent; }
+.erd-table-groups-members > label { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; transition: background .12s, border-color .12s; }
+.erd-table-groups-members > label:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); }
+.erd-table-groups-members > label:has(input:checked) { background: color-mix(in srgb, var(--theme-color) 7%, transparent); }
+.erd-table-groups-members > label:has(input:focus-visible) { border-color: var(--focus-outline); }
+.erd-table-groups-members input { width: 13px; height: 13px; margin: 0; accent-color: var(--theme-color); flex-shrink: 0; }
+.erd-table-groups-members svg { color: var(--muted); opacity: .7; }
+.erd-table-groups-members > label:has(input:checked) svg { color: var(--theme-color); opacity: .9; }
+.erd-table-groups-members span { min-width: 0; }
+.erd-table-groups strong { display: block; overflow-wrap: anywhere; font-size: 11.5px; font-weight: 550; }
+.erd-table-groups small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.erd-table-groups-hint { margin: 9px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.erd-table-groups-error { margin: 10px 0 0; color: var(--list-file-danger-color); font-size: 11px; }
+
+.erd-table-groups-empty { display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 18px 12px; color: var(--muted); font-size: 11px; text-align: center; line-height: 1.5; }
+.erd-table-groups-empty > svg { opacity: .45; }
+.erd-table-groups-empty strong { color: var(--foreground); }
+.erd-table-groups-empty p { max-width: 235px; margin: -3px 0 0; }
+.erd-table-groups-members .erd-table-groups-empty { display: block; margin: 0; padding: 12px; }
+.erd-table-groups-list { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.erd-table-groups-list > button { gap: 9px; padding: 8px; text-align: left; background: transparent; border: 1px solid transparent; border-radius: 6px; }
+.erd-table-groups-list > button:hover { background: color-mix(in srgb, var(--foreground) 5%, transparent); border-color: color-mix(in srgb, var(--action-border) 60%, transparent); }
+.erd-table-groups-list-icon { display: grid; place-items: center; width: 30px; height: 30px; flex-shrink: 0; border-radius: 5px; background: color-mix(in srgb, var(--group-color) 12%, transparent); color: var(--group-color); }
+.erd-table-groups-list-copy { flex: 1; min-width: 0; }
+.erd-table-groups-chevron { color: var(--muted); opacity: .5; }
+.erd-table-groups-list > button:hover .erd-table-groups-chevron { color: var(--theme-color); opacity: 1; }
+
+.erd-table-groups footer { display: flex; align-items: center; justify-content: flex-end; gap: 5px; flex-shrink: 0; padding: 9px 10px; border-top: 1px solid color-mix(in srgb, var(--action-border) 60%, transparent); }
+.erd-table-groups footer > span { margin-right: auto; color: var(--muted); font-size: 10px; }
+.erd-table-groups footer > button { min-height: 29px; padding: 5px 7px; white-space: nowrap; border: 1px solid var(--action-border); background: var(--panel-header-bg); border-radius: 5px; font-size: 10.5px; font-weight: 500; }
+.erd-table-groups footer > button:hover { border-color: var(--action-hover-border); background: var(--background); }
+.erd-table-groups footer .erd-table-groups-cancel { border-color: transparent; background: transparent; color: var(--muted); }
+.erd-table-groups footer .erd-table-groups-cancel:hover { background: color-mix(in srgb, var(--foreground) 6%, transparent); color: var(--foreground); }
+.erd-table-groups footer .erd-table-groups-save { background: var(--theme-color); border-color: var(--theme-color); color: #fff; }
+.erd-table-groups footer .erd-table-groups-save:hover { background: var(--theme-color); border-color: var(--theme-color); filter: brightness(.95); }
+.erd-table-groups footer .erd-table-groups-ungroup { margin-right: auto; border-color: transparent; background: transparent; color: var(--muted); }
+.erd-table-groups footer .erd-table-groups-ungroup:hover { color: var(--list-file-danger-color); background: color-mix(in srgb, var(--list-file-danger-color) 7%, transparent); }
+@media (max-width: 340px) {
+    .erd-table-groups footer { flex-wrap: wrap; }
+    .erd-table-groups footer .erd-table-groups-ungroup { padding-left: 4px; padding-right: 4px; }
+}

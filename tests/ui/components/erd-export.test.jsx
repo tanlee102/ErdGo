@@ -61,6 +61,24 @@ describe('export file correctness', () => {
 });
 
 describe('export dialog', () => {
+    it('cycles all controls explicitly instead of depending on native Tab navigation preferences', async () => {
+        const user = userEvent.setup();
+        render(<ErdExportDialog erdRendering={{}} onClose={vi.fn()} />);
+        const close = screen.getByRole('button', { name: 'Close export dialog' });
+        close.focus();
+        const stops = [screen.getByRole('radio', { name: /PNG/ }), screen.getByRole('radio', { name: /2K/ }), screen.getByLabelText('Capture area'), screen.getByRole('button', { name: 'Download PNG' }), close];
+        for (const stop of stops) {
+            // A native browser may skip buttons. The dialog owns each step so
+            // keyboard focus cannot escape to browser chrome between controls.
+            const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+            fireEvent(document.activeElement, event);
+            expect(event.defaultPrevented).toBe(true);
+            expect(stop).toHaveFocus();
+        }
+        await user.tab({ shift: true });
+        expect(screen.getByRole('button', { name: 'Download PNG' })).toHaveFocus();
+    });
+
     it('keeps failures visible, supports retry and blocks duplicate exports', async () => {
         const user = userEvent.setup();
         const exportPng = vi.fn().mockReturnValueOnce(null).mockReturnValue({ ...snapshot, width: 2560, height: 1440 });
@@ -103,5 +121,16 @@ describe('export dialog', () => {
         unmount();
         expect(trigger).toHaveFocus();
         trigger.remove();
+    });
+    it('retains the original opener through StrictMode effect replay and native modal inertness', () => {
+        const trigger = document.createElement('button'); document.body.appendChild(trigger); trigger.focus();
+        const focus = trigger.focus.bind(trigger);
+        vi.spyOn(trigger, 'focus').mockImplementation(() => {
+            // Native dialogs block focus outside themselves while still open.
+            if (!document.querySelector('dialog[open]')) focus();
+        });
+        const { unmount } = render(<React.StrictMode><ErdExportDialog erdRendering={{}} onClose={vi.fn()} /></React.StrictMode>);
+        expect(screen.getByRole('button', { name: 'Close export dialog' })).toHaveFocus();
+        unmount(); expect(trigger).toHaveFocus(); trigger.remove();
     });
 });

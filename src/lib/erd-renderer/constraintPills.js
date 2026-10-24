@@ -56,8 +56,8 @@ export function getCenteredCanvasTextBaseline(centerY, metrics, fallbackFontSize
             ? centerY + (ascent - descent) / 2
             : centerY + fallbackFontSize * 0.25;
 
-    // Half-pixel snapping keeps the glyph equally crisp above and below its
-    // visual center across Chromium's Windows and macOS font rasterizers.
+    // Keep the established world-space badge alignment. drawCanvasText applies
+    // physical-pixel snapping after the camera, including at fractional zoom.
     return Math.round(baseline * 2) / 2;
 }
 

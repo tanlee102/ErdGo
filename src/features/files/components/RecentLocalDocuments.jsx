@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { listLocalDocuments, subscribeToLocalDocuments } from '@/features/files/lib/localFileStore';
-import { getDocumentKindLabel, getDocumentRoute } from '@/features/files/lib/fileDocuments';
+import { FILE_KINDS, getDocumentKind, getDocumentKindLabel, getDocumentRoute } from '@/features/files/lib/fileDocuments';
 
 export default function RecentLocalDocuments() {
     const [documents, setDocuments] = useState([]);
     const [error, setError] = useState('');
     const [showAll, setShowAll] = useState(false);
     const refresh = useCallback(() => {
-        try { setDocuments(listLocalDocuments()); setError(''); }
+        try { setDocuments(listLocalDocuments().filter(document => getDocumentKind(document) === FILE_KINDS.SQL_ERD)); setError(''); }
         catch (error) { setError(error.message); }
     }, []);
     useEffect(() => { refresh(); return subscribeToLocalDocuments(refresh); }, [refresh]);

@@ -124,8 +124,8 @@ export default function ErdControlHelp({ children, placement = 'left', ...props 
         const anchorBounds = anchor.getBoundingClientRect();
         const onResize = () => {
             const bounds = anchor.getBoundingClientRect();
-            // Canvas refreshes dispatch resize without moving the viewport or
-            // button. Keep hover help open through those renderer notifications.
+            // Duplicate resize notifications can leave the viewport and button
+            // unchanged. Preserve help until their visible geometry moves.
             if (window.innerWidth !== viewport.width || window.innerHeight !== viewport.height || ['left', 'top', 'right', 'bottom'].some((key) => bounds[key] !== anchorBounds[key])) dismiss();
         };
         document.addEventListener('keydown', onKeyDown);

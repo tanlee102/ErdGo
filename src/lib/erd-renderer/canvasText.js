@@ -1,8 +1,52 @@
 /**
- * Canvas text measurement, wrapping, and truncation helpers.
+ * Canvas text rasterization, measurement, wrapping, and truncation helpers.
  * Measurements depend only on the supplied 2D context; renderer state belongs
- * in genErdScript and must not leak into this module.
+ * in the renderer runtime and must not leak into this module.
  */
+const physicalFontCache = new Map();
+const PHYSICAL_FONT_CACHE_LIMIT = 64;
+
+/**
+ * Rasterize glyphs at their final backing-store font size, allowing the browser
+ * to hint small text directly instead of transforming world-size glyphs. Only
+ * the painted anchor is snapped (at most half a physical pixel); measurements,
+ * table geometry, clipping, opacity and hit testing keep their original units.
+ * No minimum font size or extra canvas buffers are introduced. Unsupported
+ * transforms/fonts retain native fillText behavior.
+ */
+export function drawCanvasText(ctx, text, x, y) {
+    const transform = ctx.getTransform();
+    const { a, b, c, d, e, f } = transform;
+    const font = ctx.font;
+    if (b !== 0 || c !== 0 || a !== d || !Number.isFinite(a) || a <= 0) {
+        ctx.fillText(text, x, y);
+        return;
+    }
+
+    const key = `${a}:${font}`;
+    let physicalFont = physicalFontCache.get(key);
+    if (!physicalFont) {
+        const size = font.match(/\b(\d+(?:\.\d+)?)px\b/);
+        if (!size) {
+            ctx.fillText(text, x, y);
+            return;
+        }
+        physicalFont = font.replace(size[0], `${Number(size[1]) * a}px`);
+        // Continuous wheel/pinch zoom can otherwise retain thousands of fonts.
+        if (physicalFontCache.size >= PHYSICAL_FONT_CACHE_LIMIT) physicalFontCache.clear();
+        physicalFontCache.set(key, physicalFont);
+    }
+
+    try {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.font = physicalFont;
+        ctx.fillText(text, Math.round(x * a + e), Math.round(y * d + f));
+    } finally {
+        ctx.font = font;
+        ctx.setTransform(a, b, c, d, e, f);
+    }
+}
+
 function splitCanvasTokenToWidth(ctx, token, maxWidth) {
     const value = String(token ?? '');
     const lines = [];

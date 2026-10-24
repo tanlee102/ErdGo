@@ -7,7 +7,7 @@ const DEBOUNCE_MS = 30;
  * useChangeTracking — emits `setHasUnsavedChanges(true|false)` whenever the
  * editor state diverges from / re-converges with the persisted snapshot.
  *
- * Behavioral contract (frozen — refactor-only changes):
+ * Behavioral contract:
  *
  *   • New files always have unsaved changes.
  *   • Without `originalData`, an existing file is considered clean.
@@ -16,15 +16,13 @@ const DEBOUNCE_MS = 30;
  *   • SQL / file-name typing is debounced to coalesce rapid keystrokes.
  *   • Context-only changes (driven by `erdContextVersion` ticks from the ERD
  *     canvas — table drag, color toggle, zoom, …) bypass the debounce.
- *   • The setter is only called when the boolean truly changes, eliminating
- *     redundant React re-renders.
- *
- * @version 2.1.0 — refactor-only: shared deepEqual, single comparison
- *                  pipeline, no behavioral changes.
+ *   • Repeated results are suppressed within the same saved baseline. A new
+ *     baseline must republish its result because hydration/save can reset the
+ *     parent's flag while the early canvas already has new context changes.
  */
 export function useChangeTracking({ sqlInput, fileName, originalData, isNewFile, erdContextRef, erdContextVersion, setHasUnsavedChanges }) {
     const debounceRef = useRef(null);
-    const lastResultRef = useRef(false);
+    const lastResultRef = useRef({ baseline: originalData, hasChanges: false });
 
     const checkForChanges = useCallback(() => {
         if (isNewFile) return true;
@@ -42,12 +40,12 @@ export function useChangeTracking({ sqlInput, fileName, originalData, isNewFile,
 
     const updateState = useCallback(
         (hasChanges) => {
-            if (hasChanges !== lastResultRef.current) {
-                lastResultRef.current = hasChanges;
+            if (hasChanges !== lastResultRef.current.hasChanges || originalData !== lastResultRef.current.baseline) {
+                lastResultRef.current = { baseline: originalData, hasChanges };
                 setHasUnsavedChanges(hasChanges);
             }
         },
-        [setHasUnsavedChanges],
+        [originalData, setHasUnsavedChanges],
     );
 
     // Debounced check: SQL / file-name updates fire many times per second.

@@ -489,6 +489,22 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
         [commitTabs],
     );
 
+    const getSampleDataContext = useCallback(() => ({
+        sql: buildCombinedSql(tabsRef.current).sql,
+        revision: JSON.stringify([canvasLoadVersionRef.current, tabsRef.current.map(tab => [tab.id, tab.sql, tab.isInactive === true])]),
+    }), []);
+
+    const insertSampleDataTab = useCallback((sql, expectedRevision) => {
+        // A generated fixture belongs to the exact committed workspace that
+        // supplied its keys. Never apply it to changed SQL or a reloaded file.
+        if (!expectedRevision || getSampleDataContext().revision !== expectedRevision) {
+            return { ok: false, message: 'The SQL workspace changed. Close the generator and open it again to generate fresh data.' };
+        }
+        if (typeof sql !== 'string' || !sql.trim()) return { ok: false, message: 'Generate a preview before inserting data.' };
+        importSqlFiles([{ title: 'Sample Data', sql }]);
+        return { ok: true };
+    }, [getSampleDataContext, importSqlFiles]);
+
     const removeTab = useCallback(
         (tabId = activeTabIdRef.current) => {
             const currentTabs = tabsRef.current;
@@ -763,6 +779,8 @@ export function useSqlTabs({ sqlInput, setSqlInput, loadVersion, savedSql, saved
         getTableDeletionPreview,
         addTab,
         importSqlFiles,
+        getSampleDataContext,
+        insertSampleDataTab,
         removeTab,
         duplicateTab,
         toggleTabInactive,

@@ -36,7 +36,7 @@ const TrashIcon = () => (
 );
 
 export default function LocalFileDialog() {
-    const { displayModalListFile, setDisplayModalListFile, localFileKind } = useContext(RootLayoutContext);
+    const { displayModalListFile, setDisplayModalListFile } = useContext(RootLayoutContext);
     const { confirm } = useConfirm();
     const { confirmNavigation, runAfterNavigationConfirm } = useNavigationGuard();
     const { notifyError, notifySuccess } = useNotifications();
@@ -50,7 +50,7 @@ export default function LocalFileDialog() {
 
     const refresh = useCallback(() => {
         try {
-            setDocuments(listLocalDocuments());
+            setDocuments(listLocalDocuments().filter(document => getDocumentKind(document) === FILE_KINDS.SQL_ERD));
         } catch (error) {
             notifyError(error.message, { title: 'Local files unavailable' });
         }
@@ -63,12 +63,12 @@ export default function LocalFileDialog() {
 
     const filteredDocuments = useMemo(() => {
         const normalizedQuery = query.trim().toLowerCase();
-        return documents.filter((document) => (!localFileKind || getDocumentKind(document) === localFileKind) && document.name.toLowerCase().includes(normalizedQuery));
-    }, [documents, localFileKind, query]);
+        return documents.filter((document) => document.name.toLowerCase().includes(normalizedQuery));
+    }, [documents, query]);
 
     if (!displayModalListFile) return null;
 
-    const activeDocumentId = location.pathname.match(/^\/(?:e|prisma-to-erd|erd-builder)\/([^/]+)$/)?.[1] || null;
+    const activeDocumentId = location.pathname.match(/^\/e\/([^/]+)$/)?.[1] || null;
 
     const openDocument = (document) => {
         runAfterNavigationConfirm(() => {
@@ -79,7 +79,7 @@ export default function LocalFileDialog() {
     const createNew = () => {
         runAfterNavigationConfirm(() => {
             close();
-            navigate(getDocumentRoute({ id: 'new', kind: localFileKind || FILE_KINDS.SQL_ERD }));
+            navigate('/e/new');
         });
     };
     const removeDocument = async (document) => {

@@ -86,7 +86,35 @@ function describeIndexesForColumn(col, indexes) {
         .join(' • ');
 }
 
-export default function TableViewer({ tables, types, executionLog }) {
+export default function TableViewer({ tables, types, executionLog, getSampleDataContext, onInsertSampleData, sampleDataDisabledReason = '' }) {
+    const [sampleSnapshot, setSampleSnapshot] = useState(null);
+    const [SampleDataDialog, setSampleDataDialog] = useState(null);
+    const [sampleOpening, setSampleOpening] = useState(false);
+    const [sampleOpenError, setSampleOpenError] = useState('');
+    const sampleRequestRef = useRef(null);
+    useEffect(() => () => { sampleRequestRef.current = null; }, []);
+    const openSampleData = async event => {
+        if (sampleDataDisabledReason || !getSampleDataContext || sampleRequestRef.current) return;
+        const snapshot = getSampleDataContext();
+        setSampleOpenError('');
+        if (SampleDataDialog) { setSampleSnapshot(snapshot); return; }
+        const trigger = event.currentTarget;
+        const request = {};
+        sampleRequestRef.current = request;
+        setSampleOpening(true);
+        // Keep cold-download feedback in the trigger, without shifting Data View
+        // or downloading generator code before the user explicitly opens it.
+        try {
+            const module = await import('../SampleDataDialog');
+            if (sampleRequestRef.current !== request || !trigger.isConnected || trigger.closest('[hidden], [aria-hidden="true"]')) return;
+            setSampleDataDialog(() => module.default);
+            setSampleSnapshot(snapshot);
+        } catch {
+            if (sampleRequestRef.current === request) setSampleOpenError('The generator could not open. Reload the page and try again.');
+        } finally {
+            if (sampleRequestRef.current === request) { sampleRequestRef.current = null; setSampleOpening(false); }
+        }
+    };
     const tabsScrollRef = useRef(null);
     // The table tab strip supports drag-scroll with momentum. Mutable refs keep
     // pointer velocity and click suppression outside render state.
@@ -367,6 +395,12 @@ export default function TableViewer({ tables, types, executionLog }) {
 
     return (
         <div className="tv">
+            {sampleSnapshot && SampleDataDialog &&
+                <SampleDataDialog sql={sampleSnapshot.sql} onClose={() => setSampleSnapshot(null)} onInsert={sql => {
+                    if (sampleDataDisabledReason) return { ok: false, message: sampleDataDisabledReason };
+                    return onInsertSampleData(sql, sampleSnapshot.revision);
+                }} />
+            }
             {/* Tab Bar */}
             <div className="tv-tabs">
                 <div className={`tv-tabs-scroll-wrap ${edgeFade.left ? 'tv-fade-left' : ''} ${edgeFade.right ? 'tv-fade-right' : ''}`}>
@@ -438,6 +472,18 @@ export default function TableViewer({ tables, types, executionLog }) {
                     {executionLog.length > 0 && <span className={`tv-tab-count ${errorCount > 0 ? 'tv-count-error' : ''}`}>{executionLog.length}</span>}
                 </button>
             </div>
+
+            {getSampleDataContext && <div className="tv-generate-bar">
+                <span>Make your schema queryable</span>
+                <button type="button" className="tv-download-btn" onClick={openSampleData} disabled={Boolean(sampleDataDisabledReason)} aria-busy={sampleOpening || undefined} aria-disabled={sampleOpening || undefined} onKeyDown={event => {
+                    if (sampleOpening && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); sampleRequestRef.current = null; setSampleOpening(false); }
+                }} title={sampleDataDisabledReason || 'Create realistic rows using local dictionaries and your table constraints'}>
+                    <span className="tv-generator-icon" aria-hidden="true">{sampleOpening ? <span className="tv-generator-spinner" /> : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="5" rx="8" ry="3" /><path d="M4 5v14c0 4 16 4 16 0V5M4 12c0 4 16 4 16 0" /></svg>}</span>
+                    Generate sample data
+                </button>
+                <span className="tv-generator-status" role="status">{sampleOpening ? 'Opening sample data generator…' : ''}</span>
+            </div>}
+            {sampleOpenError && <p className="tv-generator-error" role="alert">{sampleOpenError}</p>}
 
             {/* Log View */}
             {showLog ? (
@@ -617,7 +663,7 @@ export default function TableViewer({ tables, types, executionLog }) {
                                         <div>
                                             No rows yet — use <code>INSERT INTO {activeTable.name}</code>
                                         </div>
-                                        <div className="tv-data-empty-hint">or ask AI to generate sample data</div>
+                                        <div className="tv-data-empty-hint">{getSampleDataContext ? 'or use Generate sample data above' : 'or ask AI to generate sample data'}</div>
                                     </div>
                                 </div>
                             )}

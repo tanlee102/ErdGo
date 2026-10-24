@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useRef } from 'react';
-import MonacoEditor from '@monaco-editor/react';
+import MonacoEditor from '@/components/CodeEditor';
 import { ThemeContext } from '@/contexts/ThemeContext';
 import { languageConfiguration } from '@/config/languageConfiguration';
 import { monacoOptions } from '@/config/monacoOptions';

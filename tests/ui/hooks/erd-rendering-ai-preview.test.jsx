@@ -3,7 +3,7 @@
 import React from 'react';
 import { act, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
 import { useErdRendering } from '@/features/editor/hooks/useErdRendering';
@@ -14,11 +14,16 @@ vi.mock('@/lib/genErdScript', () => ({
 }));
 
 describe('useErdRendering AI preview', () => {
+    beforeEach(() => {
+        runErdScript.mockReset().mockResolvedValue({});
+    });
+
     afterEach(() => {
         vi.clearAllMocks();
     });
 
     it('does not mutate committed SQL or schema when a pending preview table is deleted from the canvas', async () => {
+        const erdContextRef = { current: {} };
         const schemaRef = {
             current: {
                 tables: [{ name: 'users' }],
@@ -41,8 +46,7 @@ describe('useErdRendering AI preview', () => {
             () =>
                 useErdRendering({
                     theme: 'light',
-                    erdContextRef: { current: {} },
-                    isEditorReady: false,
+                    erdContextRef,
                     isLoading: false,
                     isAiPreview: true,
                 }),
@@ -58,6 +62,7 @@ describe('useErdRendering AI preview', () => {
     });
 
     it('shows the tab-aware deletion preview before deleting from the workspace', async () => {
+        const erdContextRef = { current: {} };
         const user = userEvent.setup();
         const schemaRef = {
             current: {
@@ -93,8 +98,7 @@ describe('useErdRendering AI preview', () => {
             () =>
                 useErdRendering({
                     theme: 'light',
-                    erdContextRef: { current: {} },
-                    isEditorReady: false,
+                    erdContextRef,
                     isLoading: false,
                 }),
             { wrapper },
@@ -154,7 +158,6 @@ describe('useErdRendering AI preview', () => {
                 useErdRendering({
                     theme: 'light',
                     erdContextRef,
-                    isEditorReady: true,
                     isLoading: false,
                     isAiPreview: true,
                 }),
@@ -190,7 +193,6 @@ describe('useErdRendering AI preview', () => {
                 useErdRendering({
                     theme: 'light',
                     erdContextRef,
-                    isEditorReady: true,
                     isLoading: false,
                     contextLoadVersion: 1,
                 }),
@@ -249,7 +251,7 @@ describe('useErdRendering AI preview', () => {
 
         runErdScript.mockImplementation(() => Promise.resolve({}));
         const { result } = renderHook(
-            () => useErdRendering({ theme: 'light', erdContextRef, isEditorReady: true, isLoading: false, contextLoadVersion: 1 }),
+            () => useErdRendering({ theme: 'light', erdContextRef, isLoading: false, contextLoadVersion: 1 }),
             { wrapper },
         );
 
@@ -285,7 +287,7 @@ describe('useErdRendering AI preview', () => {
 
         runErdScript.mockImplementation(() => Promise.resolve({}));
         const { result } = renderHook(
-            () => useErdRendering({ theme: 'light', erdContextRef, isEditorReady: true, isLoading: false, contextLoadVersion: 1, schemaVersion: 1 }),
+            () => useErdRendering({ theme: 'light', erdContextRef, isLoading: false, contextLoadVersion: 1, schemaVersion: 1 }),
             { wrapper },
         );
 
@@ -345,13 +347,14 @@ describe('useErdRendering AI preview', () => {
             },
         };
         const erdContextRef = { current: {} };
+        const layoutValue = { sqlInput: 'preview', setSqlInput: vi.fn(), schemaRef };
         const wrapper = ({ children }) => (
-            <RootLayoutContext.Provider value={{ sqlInput: 'preview', setSqlInput: vi.fn(), schemaRef }}>
+            <RootLayoutContext.Provider value={layoutValue}>
                 <ConfirmProvider>{children}</ConfirmProvider>
             </RootLayoutContext.Provider>
         );
         const { result } = renderHook(
-            () => useErdRendering({ theme: 'light', erdContextRef, isEditorReady: false, isLoading: false, isAiPreview: true, schemaVersion: 1 }),
+            () => useErdRendering({ theme: 'light', erdContextRef, isLoading: false, isAiPreview: true, schemaVersion: 1 }),
             { wrapper },
         );
 

@@ -30,6 +30,8 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
 
     const splitterRef = useRef(null);
     const rafRef = useRef(null); // RequestAnimationFrame for smooth dragging
+    const dragCleanupRef = useRef(null);
+    const mobileToggleTimerRef = useRef(null);
     const hasToggledToErdRef = useRef(false); // Track if user has toggled to ERD at least once
 
     const MOBILE_BREAKPOINT = 768;
@@ -39,6 +41,12 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
         const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
         const wasMobile = isMobile;
         setIsMobile(mobile);
+
+        if (!mobile && mobileToggleTimerRef.current !== null) {
+            clearTimeout(mobileToggleTimerRef.current);
+            mobileToggleTimerRef.current = null;
+            hasToggledToErdRef.current = false;
+        }
 
         // Reset flag when switching from desktop to mobile
         if (mobile && !wasMobile) {
@@ -56,11 +64,19 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
             // Mobile: Toggle between editor and ERD
             setShowEditor((prev) => {
                 const newValue = !prev;
+                // A quick return to the source hides the canvas before the
+                // delayed fit. Keep its first visible fit pending instead.
+                if (newValue && mobileToggleTimerRef.current !== null) {
+                    clearTimeout(mobileToggleTimerRef.current);
+                    mobileToggleTimerRef.current = null;
+                    hasToggledToErdRef.current = false;
+                }
                 // When switching to ERD for the first time (!newValue = false means showEditor = false -> show ERD)
                 // Dispatch custom event to force fit canvas ERD ONLY ONCE
                 if (!newValue && !hasToggledToErdRef.current) {
                     hasToggledToErdRef.current = true; // Mark as toggled for the first time
-                    setTimeout(() => {
+                    mobileToggleTimerRef.current = setTimeout(() => {
+                        mobileToggleTimerRef.current = null;
                         // Dispatch custom force-fit event
                         window.dispatchEvent(new CustomEvent('erd-force-fit'));
                     }, 150); // Delay to ensure DOM has updated display
@@ -85,7 +101,7 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
     const handleSplitterMouseDown = useCallback(
         (e) => {
             // Ignore if clicking on toggle button
-            if (e.target.classList.contains('splitter-toggle-btn')) {
+            if (e.target.closest?.('.splitter-toggle-btn')) {
                 return;
             }
 
@@ -94,26 +110,45 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
             if (mobile) return;
 
             e.preventDefault();
+            dragCleanupRef.current?.();
             const startPos = e.clientX;
             const startSize = panelSize;
-            const containerSize = window.innerWidth;
 
             setIsDragging(true);
 
             // Cache DOM elements
             const sqlPanel = document.querySelector('.sql-panel');
             const erdPanel = document.querySelector('.erd-panel');
+            const containerSize = splitterRef.current?.parentElement?.getBoundingClientRect().width || window.innerWidth;
+            const previousCursor = document.body.style.cursor;
+            const previousUserSelect = document.body.style.userSelect;
+            const viewport = { width: window.innerWidth, height: window.innerHeight };
+            let latestPosition = startPos;
+
+            const cleanupDrag = () => {
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+                window.removeEventListener('blur', handleBlur);
+                window.removeEventListener('resize', handleViewportResize);
+                document.body.style.cursor = previousCursor;
+                document.body.style.userSelect = previousUserSelect;
+                if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+                rafRef.current = null;
+                dragCleanupRef.current = null;
+            };
 
             // Handle mouse move during drag
             const handleMouseMove = (e) => {
-                // Cancel previous animation frame
-                if (rafRef.current) {
-                    cancelAnimationFrame(rafRef.current);
-                }
-
-                // Schedule update for next frame (smooth 60fps)
+                // Mouseup can happen outside the window. Finish at the last
+                // drag position before accepting a pointer that is now free.
+                if (e.buttons === 0) { handleBlur(); return; }
+                latestPosition = e.clientX;
+                if (rafRef.current !== null) return;
+                // Consume the latest pointer once per frame; fast input must
+                // not repeatedly cancel and starve an already queued update.
                 rafRef.current = requestAnimationFrame(() => {
-                    const currentPos = e.clientX;
+                    rafRef.current = null;
+                    const currentPos = latestPosition;
                     const delta = currentPos - startPos;
                     const deltaPercent = (delta / containerSize) * 100;
                     let newSize = startSize + deltaPercent;
@@ -129,17 +164,7 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
 
             // Handle mouse up (end drag)
             const handleMouseUp = (e) => {
-                // Cleanup event listeners
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-
-                // Cancel any pending animation frame
-                if (rafRef.current) {
-                    cancelAnimationFrame(rafRef.current);
-                    rafRef.current = null;
-                }
+                cleanupDrag();
 
                 setIsDragging(false);
 
@@ -156,11 +181,13 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
                 if (finalSize < threshold) {
                     // Snap to collapsed (0%)
                     setLastPanelSize(startSize);
-                    setPanelSize(0);
+                    finalSize = 0;
+                    setPanelSize(finalSize);
                     setIsCollapsed(true);
                 } else if (finalSize > maxThresh) {
                     // Snap to full width (100%)
-                    setPanelSize(100);
+                    finalSize = 100;
+                    setPanelSize(finalSize);
                     setIsCollapsed(false);
                 } else {
                     // Normal range (5-95%)
@@ -169,21 +196,21 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
                     setIsCollapsed(false);
                 }
 
-                // Reset inline styles, let React control rendering
-                if (sqlPanel) {
-                    sqlPanel.style.width = '';
-                    sqlPanel.style.height = '';
-                }
-                if (erdPanel) {
-                    erdPanel.style.width = '';
-                    erdPanel.style.height = '';
-                    erdPanel.style.flex = '';
-                }
+                // Retain the committed width, including a drag back to its
+                // starting size (React does not rewrite an unchanged prop).
+                if (sqlPanel) sqlPanel.style.width = `${finalSize}%`;
+            };
+            const handleBlur = () => handleMouseUp({ clientX: latestPosition });
+            const handleViewportResize = () => {
+                if (window.innerWidth !== viewport.width || window.innerHeight !== viewport.height) handleBlur();
             };
 
             // Attach event listeners
+            dragCleanupRef.current = cleanupDrag;
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('blur', handleBlur);
+            window.addEventListener('resize', handleViewportResize);
             document.body.style.cursor = 'col-resize';
             document.body.style.userSelect = 'none';
         },
@@ -258,6 +285,11 @@ export default function useSplitter({ initialSize = 35, minThreshold = { desktop
         setIsClient(true);
         checkMobile();
     }, [checkMobile]);
+
+    useEffect(() => () => {
+        dragCleanupRef.current?.();
+        if (mobileToggleTimerRef.current !== null) clearTimeout(mobileToggleTimerRef.current);
+    }, []);
 
     // Listen to window resize
     useEffect(() => {

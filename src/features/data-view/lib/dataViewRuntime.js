@@ -105,7 +105,7 @@ import {
  *  RETURN SHAPE (frozen contract)
  *  ------------------------------
  *  createSqlExecutor({ dialect?: 'auto' | 'sqlite' | 'postgres' |
- *                      'mysql' | 'mssql' }) → {
+ *                      'mysql' | 'mssql', cacheInsertConstraints?: boolean }) → {
  *    execute(sql):     runs the script, returns { tables, types, log },
  *    tables:           Map<string, Table> — keyed by the cleaned (un-quoted)
  *                                            declared name. Lookups should go
@@ -134,6 +134,10 @@ export function createSqlExecutor(options = {}) {
     const tables = new Map();
     const types = new Map();
     const executionLog = [];
+    // Opt in only for owned append-heavy sessions, such as sample generation.
+    // Ordinary Data View executors allocate no persistent validation caches.
+    const insertConstraintCache = options?.cacheInsertConstraints === true ? new Map() : null;
+    const insertReferenceCache = insertConstraintCache ? new Map() : null;
     let transactionState = null;
     // A Data View executor represents one database connection. Keep the
     // connection-level FK switch here (rather than on every table) because
@@ -163,6 +167,9 @@ export function createSqlExecutor(options = {}) {
      *      token so the entry still anchors at the right SQL line.
      */
     function log(type, message, positionSource = null) {
+        // A rejected multi-row INSERT may have staged keys in a reused index.
+        // Never let those keys survive statement rollback or another failure.
+        if (type === 'error') { insertConstraintCache?.clear(); insertReferenceCache?.clear(); }
         const entry = { type, message, timestamp: Date.now() };
         const pos = toPosition(positionSource) || toPosition(currentStatementToken);
         if (pos) entry.position = pos;
@@ -3056,7 +3063,7 @@ export function createSqlExecutor(options = {}) {
             );
         }
 
-        function validateForeignKeyReference(table, row, rowLabel, foreignKey, { rows = table.rows, tableRows = null } = {}) {
+        function validateForeignKeyReference(table, row, rowLabel, foreignKey, { rows = table.rows, tableRows = null, referenceCache = null } = {}) {
             const sourceColumns = Array.isArray(foreignKey.columns) ? foreignKey.columns : [];
             if (sourceColumns.length === 0) return [];
             const sourceValues = sourceColumns.map((column) => rowValue(row, column));
@@ -3077,13 +3084,42 @@ export function createSqlExecutor(options = {}) {
                 return [`${rowLabel}: FOREIGN KEY (${sourceColumns.join(', ')}) references "${parentTable.name}" columns (${targetColumns.join(', ')}) that are not PRIMARY KEY or unconditional UNIQUE`];
             }
             const parentRows = tableRows?.get(parentTable) || (parentTable === table ? rows : parentTable.rows);
-            const matches = parentRows.some((parentRow) => foreignKeyMatchesParentRow(row, parentRow, parentTable, foreignKey));
+            let matches;
+            // Owned INSERT sessions can index unchanged parent rows as they
+            // are visited. A one-row lookup still stops at its first match;
+            // later lookups reuse that prefix and scan each parent at most once.
+            // SQLite affinity/collation and staged/self references retain the
+            // ordinary comparator, including forward references in one INSERT.
+            if (referenceCache && parentTable !== table && parentRows === parentTable.rows && parentTable.dialect !== 'sqlite') {
+                let cached = referenceCache.get(parentTable);
+                if (!cached || cached.rows !== parentRows || cached.count > parentRows.length) {
+                    cached = { rows: parentRows, count: parentRows.length, columns: new Map() };
+                    referenceCache.set(parentTable, cached);
+                }
+                // Only INSERTs populate this cache. Appending preserves the
+                // indexed prefix; every other statement/error invalidates it.
+                cached.count = parentRows.length;
+                const columnsKey = JSON.stringify(targetColumns.map(column => String(column).toLowerCase()));
+                let index = cached.columns.get(columnsKey);
+                if (!index) { index = { keys: new Set(), nextRow: 0 }; cached.columns.set(columnsKey, index); }
+                const singleColumn = targetColumns.length === 1;
+                const sourceKey = singleColumn ? String(sourceValues[0]) : JSON.stringify(sourceValues.map(String));
+                matches = index.keys.has(sourceKey);
+                while (!matches && index.nextRow < parentRows.length) {
+                    const values = targetColumns.map(column => rowValue(parentRows[index.nextRow], column));
+                    index.nextRow++;
+                    if (values.some(value => value == null)) continue;
+                    const key = singleColumn ? String(values[0]) : JSON.stringify(values.map(String));
+                    index.keys.add(key);
+                    matches = key === sourceKey;
+                }
+            } else matches = parentRows.some((parentRow) => foreignKeyMatchesParentRow(row, parentRow, parentTable, foreignKey));
             return matches
                 ? []
                 : [`${rowLabel}: FOREIGN KEY (${sourceColumns.join(', ')}) has no matching key in "${parentTable.name}"`];
         }
 
-        function validateForeignKeys(table, row, rowLabel, { rows = table.rows, tableRows = null } = {}) {
+        function validateForeignKeys(table, row, rowLabel, { rows = table.rows, tableRows = null, referenceCache = null } = {}) {
             if (!isForeignKeyEnforcementEnabled()) return [];
             const errors = [];
             for (const foreignKey of table.foreignKeys || []) {
@@ -3092,7 +3128,7 @@ export function createSqlExecutor(options = {}) {
                 // parent key, while commit-time validation still rejects any
                 // transaction that remains inconsistent.
                 if (isInitiallyDeferredForeignKey(table, foreignKey)) continue;
-                errors.push(...validateForeignKeyReference(table, row, rowLabel, foreignKey, { rows, tableRows }));
+                errors.push(...validateForeignKeyReference(table, row, rowLabel, foreignKey, { rows, tableRows, referenceCache }));
             }
             return errors;
         }
@@ -3126,6 +3162,7 @@ export function createSqlExecutor(options = {}) {
             ignoreRow = null,
             constraintIndexes = null,
             tableRows = null,
+            referenceCache = null,
         } = {}) {
             const validationTable = rows === table.rows ? table : { ...table, rows };
             return [
@@ -3133,7 +3170,7 @@ export function createSqlExecutor(options = {}) {
                 ...validateSqliteStrictTypes(table, row, rowLabel),
                 ...validateChecks(table, row, rowLabel, { rows }),
                 ...validatePartialUniqueIndexes(table, row, rowLabel, { rows, ignoreRow }),
-                ...validateForeignKeys(table, row, rowLabel, { rows, tableRows }),
+                ...validateForeignKeys(table, row, rowLabel, { rows, tableRows, referenceCache }),
             ];
         }
 
@@ -3755,19 +3792,23 @@ export function createSqlExecutor(options = {}) {
             }
 
             if (peek() && peek().type === 'PUNC' && peek().value === ';') next();
+            let insertConstraintIndexes;
             if (insertErrors.length === 0 && stagedRows.length > 0) {
                 const finalRows = [...table.rows, ...stagedRowObjects()];
                 const finalTableRows = new Map(Array.from(tables.values()).map((candidateTable) => [
                     candidateTable,
                     candidateTable === table ? finalRows : candidateTable.rows,
                 ]));
-                const insertConstraintIndexes = buildConstraintIndexes(table, table.rows);
+                const cached = insertConstraintCache?.get(table);
+                insertConstraintIndexes = cached?.rows === table.rows && cached.count === table.rows.length
+                    ? cached.indexes : buildConstraintIndexes(table, table.rows);
                 const priorRows = [...table.rows];
                 for (const { row, rowLabel } of stagedRows) {
                     const rowErrors = validateMutationRow(table, row, rowLabel, {
                         rows: priorRows,
                         constraintIndexes: insertConstraintIndexes,
                         tableRows: finalTableRows,
+                        referenceCache: insertReferenceCache,
                     });
                     if (rowErrors.length > 0) {
                         insertErrors.push(...rowErrors);
@@ -3783,6 +3824,9 @@ export function createSqlExecutor(options = {}) {
             }
             if (stagedRows.length > 0) {
                 table.rows.push(...stagedRowObjects());
+                // Publish only committed keys. The error path above clears any
+                // reused index that was modified while validating staged rows.
+                insertConstraintCache?.set(table, { rows: table.rows, count: table.rows.length, indexes: insertConstraintIndexes });
                 if (transactionalAutoIncrement && stagedAutoInc) table._autoInc = stagedAutoInc;
                 rowCount = stagedRows.length;
             }
@@ -6239,6 +6283,9 @@ export function createSqlExecutor(options = {}) {
             // log() (used for sub-statement granularity, e.g. per-column).
             currentStatementToken = t;
             const kw = t.value.toUpperCase();
+            // UPDATE/DELETE, DDL and transaction/session control can replace
+            // rows or key definitions. Only consecutive INSERTs reuse indexes.
+            if (kw !== 'INSERT') { insertConstraintCache?.clear(); insertReferenceCache?.clear(); }
 
             if (kw === 'BEGIN' || kw === 'START' || kw === 'COMMIT' || kw === 'ROLLBACK' || kw === 'SAVEPOINT' || kw === 'RELEASE') {
                 next();
