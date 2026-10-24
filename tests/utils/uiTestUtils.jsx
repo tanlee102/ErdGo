@@ -15,7 +15,7 @@ export function createLayoutValue(overrides = {}) {
         setSqlInput: vi.fn(),
         setDisplayModalListFile: vi.fn(),
         setDisplayModalAddTable: vi.fn(),
-        openTypedFileList: vi.fn(),
+        openLocalFiles: vi.fn(),
         ...overrides,
     };
 }

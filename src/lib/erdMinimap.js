@@ -23,10 +23,11 @@ export function getErdViewportWorldRect({ zoom, offsetX, offsetY, viewportWidth,
     };
 }
 
-export function calculateErdMinimapModel({ tables, viewport, width, height, padding = 12 } = {}) {
+export function calculateErdMinimapModel({ tables, groups = [], viewport, width, height, padding = 12 } = {}) {
     if (![width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
 
-    const bounds = getErdBounds(tables);
+    const safeGroups = Array.isArray(groups) ? groups.filter(group => group && [group.x, group.y, group.width, group.height].every(Number.isFinite) && group.width > 0 && group.height > 0) : [];
+    const bounds = getErdBounds([...(tables || []), ...safeGroups]);
     if (!bounds) return null;
 
     const safePadding = Number.isFinite(padding) && padding >= 0
@@ -55,6 +56,11 @@ export function calculateErdMinimapModel({ tables, viewport, width, height, padd
         offsetY,
         worldBounds: bounds,
         viewport: isFiniteRect(viewport) ? projectRect(viewport) : null,
+        groupRects: safeGroups.map(group => ({
+            id: group.id,
+            color: group.color,
+            ...projectRect({ x: group.x - group.width / 2, y: group.y - group.height / 2, width: group.width, height: group.height }),
+        })),
         tableRects: (tables || []).filter((table) => (
             table &&
             typeof table.name === 'string' &&

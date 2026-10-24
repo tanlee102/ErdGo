@@ -307,7 +307,7 @@ export default function SqlPanel({ splitter, erdData, aiDiff, sqlTabs, saveOrUpd
 
             <FileNameInput fileName={erdData.fileName} setFileName={erdData.setFileName} hasUnsavedChanges={erdData.hasUnsavedChanges} isSaving={isSaving} saveOrUpdate={saveOrUpdate} isNewFile={erdData.isNewFile} isOwner={erdData.isOwner} disabled={isAiMode} />
 
-            <ErrorDisplay error={isPreviewAiReview ? '' : erdData.error} />
+            <ErrorDisplay error={isPreviewAiReview ? '' : erdData.error} onRetry={erdData.error?.startsWith('Failed to load local diagram:') ? erdData.retryLoad : undefined} retryDisabled={erdData.isLoading} />
 
             <SqlTabsBar
                 tabs={sqlTabs.tabs}

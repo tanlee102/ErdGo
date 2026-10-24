@@ -14,16 +14,108 @@ async function readDocuments(page) {
     return page.evaluate(key => JSON.parse(localStorage.getItem(key)).documents, KEY);
 }
 
-test('homepage exposes every local tool and saved documents on desktop and mobile', async ({ page }) => {
+test('homepage exposes SQL editing and saved diagrams on desktop and mobile', async ({ page }) => {
     await seed(page);
     await page.goto('/');
-    for (const name of ['Prisma to ERD', 'ERD Builder', 'Spreadsheet to SQL', 'Legacy diagram']) await expect(page.getByRole('link', { name: new RegExp(name) }).first()).toBeVisible();
+    for (const name of ['Open Editor', 'Legacy diagram']) await expect(page.getByRole('link', { name: new RegExp(name) }).first()).toBeVisible();
     await page.getByRole('button', { name: 'Switch to dark theme' }).click();
     await expect(page.locator('html')).toHaveClass(/dark-theme/);
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.getByRole('link', { name: 'Tool guides', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Tool guides', exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'SQL guide', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'SQL to ERD', level: 1 })).toBeVisible();
+});
+
+test('table groups save display metadata without changing SQL', async ({ page }) => {
+    await seed(page);
+    await page.goto('/e/legacy');
+    await page.getByRole('button', { name: 'Table groups', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Table groups', exact: true });
+    await dialog.getByRole('button', { name: 'New group', exact: true }).click();
+    await dialog.getByRole('textbox', { name: 'Group name', exact: true }).fill('Core tables');
+    await dialog.getByRole('checkbox', { name: 'Include users', exact: true }).check();
+    await dialog.getByRole('checkbox', { name: 'Include audit', exact: true }).check();
+    await dialog.getByRole('button', { name: 'Create group', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Close table groups' }).click();
+    await page.getByTitle('Update SQL and ERD').click();
+    await expect.poll(async () => (await readDocuments(page))[0].context.tableGroups?.[0]?.name).toBe('Core tables');
+    expect((await readDocuments(page))[0].sql).toBe(SQL);
+    await page.reload();
+    await page.getByRole('button', { name: 'Table groups', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Table groups', exact: true })).toContainText('Core tables');
+});
+
+test('local sample generation previews and inserts into a new tab', async ({ page }) => {
+    await seed(page);
+    await page.goto('/e/legacy');
+    await page.getByRole('button', { name: 'Data', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate sample data', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Generate sample data', exact: true });
+    await dialog.getByRole('spinbutton', { name: 'Rows for all tables', exact: true }).fill('3');
+    await dialog.getByRole('button', { name: 'Generate preview', exact: true }).click();
+    await expect(dialog.getByRole('table', { name: 'Generated sample rows' })).toBeVisible();
+    await expect(dialog).toContainText('6 rows ready');
+    await dialog.getByRole('button', { name: 'Insert into SQL tab', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /Sample Data/ })).toBeVisible();
+    await page.getByTitle('Update SQL and ERD').click();
+    await expect.poll(async () => (await readDocuments(page))[0].sql).toContain('INSERT INTO');
+    await expect.poll(async () => (await readDocuments(page))[0].context.sqlTabs.tabs.length).toBe(2);
+});
+
+test('source and canvas work before local Monaco loads and retry preserves edits', async ({ page }) => {
+    await seed(page);
+    const externalRequests = [];
+    page.on('request', request => { if (new URL(request.url()).hostname !== '127.0.0.1') externalRequests.push(request.url()); });
+    const runtime = /\/(?:monacoRuntime|vendor-monaco)[^/]*\.js(?:\?|$)/;
+    await page.route(runtime, route => route.abort());
+    await page.goto('/e/legacy');
+    const source = page.locator('textarea.code-editor-source').first();
+    await expect(source).toHaveValue(SQL);
+    await expect(page.getByRole('button', { name: 'Add column to audit', exact: true })).toBeVisible();
+    const edited = 'CREATE TABLE recovered(id INTEGER PRIMARY KEY, label TEXT);';
+    await source.fill(edited);
+    await expect(page.locator('.schema-stat--tables')).toHaveAttribute('aria-label', 'Tables: 1');
+    await expect(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+    await page.unroute(runtime);
+    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await expect(page.locator('.monaco-editor').first()).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.monaco?.editor.getModels().some(model => model.getValue().includes('CREATE TABLE recovered')))).toBe(true);
+    expect(externalRequests).toEqual([]);
+});
+
+test('SQL-only lists preserve legacy non-SQL records without exposing or overwriting them', async ({ page }) => {
+    const hidden = { id: 'old-tool', name: 'Legacy other tool', kind: 'erd-builder', sql: '', context: {}, payload: { nodes: [{ id: 'keep' }], edges: [] }, createdAt: null, updatedAt: null };
+    await seed(page, [legacy, hidden]);
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: /Legacy other tool/ })).toHaveCount(0);
+    for (const path of ['/prisma-to-erd/new', '/erd-builder/new', '/spreadsheet-to-sql', '/class-diagram/new', '/sequence-diagram/new']) {
+        await page.goto(path);
+        await expect(page).toHaveURL('/');
+    }
+    await page.goto('/e/legacy');
+    await page.getByRole('button', { name: 'Open local diagrams' }).click();
+    await expect(page.getByRole('dialog', { name: 'Local diagrams' })).not.toContainText('Legacy other tool');
+    await page.getByRole('button', { name: 'Close local diagrams' }).click();
+    await page.getByRole('textbox', { name: 'File name', exact: true }).fill('Updated SQL');
+    await page.getByTitle('Update SQL and ERD').click();
+    await expect.poll(async () => (await readDocuments(page)).find(document => document.id === 'legacy').name).toBe('Updated SQL');
+    expect((await readDocuments(page)).find(document => document.id === hidden.id)).toEqual(hidden);
+    await page.goto('/e/old-tool');
+    await expect(page.locator('.sql-panel')).toContainText('different ERD tool');
+    await expect(page.getByTitle('Update SQL and ERD')).toHaveCount(0);
+});
+
+test('New SQL file resets an unsaved new document within the same route', async ({ page }) => {
+    await page.goto('/e/new');
+    await page.getByRole('button', { name: /Create with Sample/ }).click();
+    await page.getByRole('textbox', { name: 'File name', exact: true }).fill('Unsaved sample');
+    await page.getByRole('button', { name: 'New SQL file', exact: true }).click();
+    await page.getByRole('button', { name: 'Leave page', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Create New File', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /Create Blank File/ }).click();
+    await expect(page.getByRole('textbox', { name: 'File name', exact: true })).not.toHaveValue('Unsaved sample');
+    await expect(page.getByRole('tab', { name: 'Schema', exact: true })).toBeVisible();
 });
 
 test('legacy SQL reloads, canvas edits save locally, and Data/Query work across view switches', async ({ page }) => {
@@ -56,70 +148,4 @@ test('legacy SQL reloads, canvas edits save locally, and Data/Query work across 
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download PNG', exact: true }).click();
     expect((await download).suggestedFilename()).toMatch(/\.png$/);
-});
-
-test('Prisma saves and reopens source and diagram without a service request', async ({ page }) => {
-    const serviceRequests = [];
-    page.on('request', request => { if (/firebase|google-analytics|\/api\//i.test(request.url())) serviceRequests.push(request.url()); });
-    await page.goto('/prisma-to-erd/new');
-    await page.getByRole('button', { name: /Create with Prisma Sample/ }).click();
-    await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Add Table', exact: true })).toHaveCount(0);
-    await page.getByRole('textbox', { name: 'Prisma ERD local file name' }).fill('Local Prisma');
-    await page.getByRole('button', { name: 'Save Prisma ERD locally' }).click();
-    await expect(page).toHaveURL(/\/prisma-to-erd\/(?!new)[^/]+$/);
-    const documents = await readDocuments(page);
-    expect(documents[0]).toMatchObject({ name: 'Local Prisma', kind: 'prisma-erd', payload: { schemaVersion: 1 } });
-    expect(documents[0].payload.source).toContain('model User');
-    await page.reload();
-    await expect(page.getByRole('textbox', { name: 'Prisma ERD local file name' })).toHaveValue('Local Prisma');
-    await expect(page.getByRole('status', { name: 'Opening Prisma ERD file' })).toHaveCount(0);
-    await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    expect(serviceRequests).toEqual([]);
-});
-
-test('Builder saves graph edits, reloads, and transfers reviewed SQL to a new editor', async ({ page }) => {
-    await page.goto('/erd-builder/new');
-    await page.getByRole('button', { name: /Create Empty ERD/ }).click();
-    await page.getByRole('button', { name: 'Add Entity', exact: true }).click();
-    await page.getByRole('textbox', { name: 'Diagram name' }).fill('Local Builder');
-    await page.getByRole('button', { name: 'Save ERD Builder file locally' }).click();
-    await expect(page).toHaveURL(/\/erd-builder\/(?!new)[^/]+$/);
-    await page.reload();
-    await expect(page.getByRole('textbox', { name: 'Diagram name' })).toHaveValue('Local Builder');
-    await expect(page.getByRole('status', { name: 'Opening ERD Builder file' })).toHaveCount(0);
-    const documents = await readDocuments(page);
-    expect(documents[0]).toMatchObject({ name: 'Local Builder', kind: 'erd-builder' });
-    expect(documents[0].payload.nodes).toHaveLength(1);
-    await page.getByRole('button', { name: 'Convert ERD to SQL', exact: true }).click();
-    await expect(page.getByRole('dialog')).toContainText('SQL');
-    const reviewed = page.getByRole('checkbox', { name: 'I have reviewed the assumptions and constraints above.' });
-    if (await reviewed.isVisible()) await reviewed.check();
-    await page.getByRole('button', { name: 'Open in SQL to ERD', exact: true }).click();
-    await expect(page).toHaveURL('/e/new');
-    await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await expect(page.getByRole('dialog', { name: 'Create New File' })).toHaveCount(0);
-});
-
-test('spreadsheet import produces SQL and downloads in the browser', async ({ page }) => {
-    await page.goto('/spreadsheet-to-sql');
-    await page.locator('input[type="file"]').setInputFiles({ name: 'people.csv', mimeType: 'text/csv', buffer: Buffer.from('id,name\n1,Ada\n2,Grace\n') });
-    await expect(page.locator('.monaco-editor')).toBeVisible();
-    const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download', exact: true }).click();
-    expect((await download).suggestedFilename()).toMatch(/\.sql$/);
-});
-
-test('local file list opens typed documents and wrong-tool routes cannot overwrite them', async ({ page }) => {
-    await seed(page, [legacy, { id: 'prisma', kind: 'prisma-erd', name: 'Saved Prisma', payload: { schemaVersion: 1, source: 'model User {\n id Int @id\n}', rendererContext: {} } }]);
-    await page.goto('/e/legacy');
-    await expect(page.locator('.monaco-editor').first()).toBeVisible();
-    await page.getByRole('button', { name: 'Open local diagrams' }).click();
-    await page.getByRole('button', { name: /^Saved Prisma Prisma to ERD/ }).click();
-    await expect(page).toHaveURL('/prisma-to-erd/prisma');
-    await expect(page.getByRole('textbox', { name: 'Prisma ERD local file name' })).toHaveValue('Saved Prisma');
-    await page.goto('/e/prisma');
-    await expect(page.locator('.sql-panel')).toContainText('different ERD tool');
-    await expect(page.getByTitle('Update SQL and ERD')).toHaveCount(0);
-    expect((await readDocuments(page)).find(document => document.id === 'prisma').kind).toBe('prisma-erd');
 });

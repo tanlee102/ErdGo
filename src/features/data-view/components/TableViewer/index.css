@@ -1,5 +1,16 @@
 /* ===== TABLE VIEWER v2 — Clean & Beautiful ===== */
 
+.tv-generate-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.tv-generate-bar > span { font-size: 11px; color: var(--text-secondary); }
+.tv-generator-icon { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; flex-shrink: 0; }
+.tv-generator-spinner { box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: tv-generator-spin .8s linear infinite; }
+.tv-generate-bar button[aria-busy=true] { cursor: progress; }
+.tv-generate-bar > .tv-generator-status { display: block; position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.tv-generator-error { margin: 0; padding: 8px 14px; border-bottom: 1px solid var(--border); color: var(--action-color); font-size: 11px; line-height: 1.5; }
+@keyframes tv-generator-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tv-generator-spinner { animation: none; } }
+@media (max-width: 480px) { .tv-generate-bar > span { display: none; } .tv-generate-bar { justify-content: flex-end; } }
+
 .tv {
     display: flex;
     flex-direction: column;

@@ -1,0 +1,80 @@
+/* Local generator workbench: bounded scrolling, theme tokens, and compact mobile controls. */
+.sample-overlay { position: fixed; inset: 0; z-index: 12000; background: rgba(15, 23, 42, .42); display: grid; place-items: center; padding: 16px; }
+.sample-dialog { --sample-divider: color-mix(in srgb, var(--dialog-bdr) 70%, var(--dialog-bg)); --sample-control-border: color-mix(in srgb, var(--action-border) 75%, var(--dialog-bg)); width: min(780px, 100%); max-height: min(90dvh, 820px); display: flex; flex-direction: column; overflow: hidden; background: var(--dialog-bg); color: var(--color-text); border: 1px solid var(--sample-divider); border-radius: 5px; box-shadow: rgba(15, 23, 42, .12) 0 12px 38px, rgba(15, 23, 42, .05) 0 2px 6px; font-family: var(--font-sans); }
+.sample-dialog:focus { outline: none; }
+.sample-header { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--sample-divider); }
+.sample-heading-icon { display: grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 5px; color: var(--action-color); background: var(--button-bg); }
+.sample-header h2 { margin: 0 0 3px; color: var(--foreground); font-size: 14px; line-height: 1.3; font-weight: 700; }
+.sample-header p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.sample-dialog button, .sample-dialog input, .sample-dialog select, .sample-dialog textarea { font: inherit; }
+.sample-dialog button { display: inline-flex; justify-content: center; align-items: center; gap: 6px; min-height: 34px; background: var(--button-bg); border: 1px solid var(--sample-control-border); border-radius: 5px; color: var(--action-color); cursor: pointer; padding: 8px 12px; font-size: 12px; }
+.sample-dialog button:hover:not(:disabled) { border-color: var(--action-hover-border); }
+.sample-dialog button:disabled { opacity: .45; cursor: default; }
+.sample-dialog .sample-close { margin: -5px -8px -5px auto; padding: 0; width: 44px; height: 44px; flex-shrink: 0; background: transparent; border: 0; color: var(--muted); }
+.sample-scroll { overflow: auto; overscroll-behavior: contain; min-height: 0; padding: 16px; }
+.sample-config { border: 0; padding: 0; margin: 0; min-width: 0; }
+.sample-global { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.sample-dialog label { display: flex; flex-direction: column; gap: 7px; font-size: 11px; color: var(--muted); }
+.sample-dialog input:not([type=checkbox]), .sample-dialog select, .sample-dialog textarea { background: var(--button-bg); border: 1px solid var(--sample-control-border); border-radius: 5px; color: var(--action-color); padding: 9px 10px; font-size: 12px; min-width: 0; width: 100%; box-sizing: border-box; }
+/* Keep keyboard location visible without stacking a thick ring around fields. */
+.sample-dialog :focus-visible { outline: 1px solid var(--focus-outline); outline-offset: 2px; }
+.sample-dialog :is(input:not([type=checkbox]), select, textarea):focus { outline: none; border-color: color-mix(in srgb, var(--focus-outline) 65%, var(--action-border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--focus-outline) 12%, transparent); }
+.sample-dialog input[type=checkbox] { accent-color: var(--theme-color); }
+.sample-total { display: flex; flex-direction: column; gap: 3px; padding-bottom: 4px; }
+.sample-total strong { font-size: 20px; font-weight: 600; }
+.sample-total span, .sample-help { font-size: 11px; color: var(--muted); line-height: 1.65; }
+.sample-help { margin: 12px 0 16px; }
+.sample-tables { display: flex; flex-direction: column; gap: 10px; }
+.sample-table { border: 1px solid var(--sample-divider); border-radius: 5px; overflow: hidden; }
+.sample-table summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; cursor: pointer; background: var(--button-bg); font-size: 13px; }
+.sample-table summary::before { content: '›'; color: var(--theme-color); }
+.sample-table[open] summary::before { content: '⌄'; }
+.sample-table summary span:first-of-type { flex: 1; overflow-wrap: anywhere; font-weight: 600; }
+.sample-table summary span:last-child { font-size: 10px; color: var(--muted); }
+.sample-table-options { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 14px 16px; border-bottom: 1px solid var(--sample-divider); }
+.sample-dialog .sample-checkbox { flex-direction: row; align-items: center; font-size: 12px; color: var(--color-text); }
+.sample-table-options label:last-child input { max-width: 100px; }
+.sample-column { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(140px, 1.3fr); align-items: center; gap: 15px; padding: 11px 16px; border-bottom: 1px solid var(--sample-divider); }
+.sample-column:last-child { border-bottom: 0; }
+.sample-column-name { display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.sample-column-name strong { font-size: 12px; font-weight: 500; }
+.sample-column-name small { font-size: 10px; color: var(--muted); }
+.sample-column-controls { display: flex; flex-direction: column; gap: 8px; }
+.sample-managed { font-size: 11px; color: var(--muted); }
+.sample-range { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+.sample-message { margin: 14px 0; padding: 12px; border: 1px solid var(--sample-divider); border-radius: 5px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.sample-error { border-color: #dc6464; color: var(--color-text); background: #dc646414; }
+.sample-progress { display: flex; flex-direction: column; gap: 10px; padding: 20px 0; font-size: 12px; }
+.sample-progress progress { width: 100%; accent-color: var(--theme-color); }
+.sample-progress button { align-self: flex-start; }
+.sample-preview { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--sample-divider); }
+.sample-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.sample-preview h3 { font-size: 13px; margin: 0; }
+.sample-grid { overflow: auto; max-height: 250px; border: 1px solid var(--sample-divider); border-radius: 5px; }
+.sample-grid table { border-collapse: collapse; width: 100%; text-align: left; font-size: 11px; }
+.sample-grid th, .sample-grid td { padding: 10px 12px; border-bottom: 1px solid var(--sample-divider); white-space: nowrap; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.sample-grid th { background: var(--button-bg); font-weight: 600; }
+.sample-grid em { color: var(--muted); }
+.sample-sql { font-size: 11px; margin-top: 14px; }
+.sample-sql summary { cursor: pointer; color: var(--muted); }
+.sample-sql pre { white-space: pre; overflow: auto; max-height: 240px; padding: 14px; background: var(--button-bg); border-radius: 5px; font-size: 11px; }
+.sample-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 16px; border-top: 1px solid var(--sample-divider); }
+.sample-footer > span { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.sample-footer > div { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; min-width: 0; }
+.sample-dialog .sample-primary { background: var(--theme-color); border-color: var(--theme-color); color: white; }
+.sample-dialog .sample-primary:hover:not(:disabled) { border-color: var(--theme-color); filter: brightness(.97); }
+@media (max-width: 640px) {
+    .sample-overlay { padding: 8px; }
+    .sample-dialog { max-height: calc(100dvh - 16px); border-radius: 5px; }
+    .sample-header, .sample-scroll { padding: 12px 14px; }
+    .sample-heading-icon { display: none; }
+    .sample-global { grid-template-columns: 1fr 1fr; gap: 12px; }
+    .sample-total { grid-column: 1 / -1; flex-direction: row; align-items: baseline; gap: 10px; }
+    .sample-column { padding: 10px; gap: 10px; grid-template-columns: minmax(80px, .8fr) minmax(130px, 1.2fr); }
+    .sample-range { flex-wrap: wrap; }
+    .sample-table summary span:last-child { display: none; }
+    .sample-dialog input:not([type=checkbox]), .sample-dialog select { min-height: 40px; }
+    .sample-footer { flex-direction: column; align-items: stretch; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); gap: 8px; }
+    .sample-footer > div { justify-content: flex-start; }
+    .sample-preview-heading { align-items: flex-start; flex-direction: column; }
+}

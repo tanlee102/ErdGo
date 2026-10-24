@@ -20,7 +20,7 @@ const createDefaultContext = () => ({
     headerActionsAlwaysVisible: true,
 });
 
-export function useErdData(index, initialDocument = null) {
+export function useErdData(index, newDocumentKey = null) {
     const { sqlInput, setSqlInput, updateSchema } = useContext(RootLayoutContext);
 
     // General State
@@ -38,6 +38,8 @@ export function useErdData(index, initialDocument = null) {
     const [isLoading, setIsLoading] = useState(index !== 'new');
     const [isOwner, setIsOwner] = useState(true);
     const [loadVersion, setLoadVersion] = useState(0);
+    const [loadAttempt, setLoadAttempt] = useState(0);
+    const retryLoad = useCallback(() => setLoadAttempt(value => value + 1), []);
     const [schemaVersion, setSchemaVersion] = useState(0);
 
     // AI Suggestion States
@@ -59,8 +61,8 @@ export function useErdData(index, initialDocument = null) {
     const erdContextRef = useRef(createDefaultContext());
     const isLoadingRef = useRef(false);
     const prevIndexRef = useRef(null);
-    const prevInitialDocumentRef = useRef(null);
     const loadSeqRef = useRef(0);
+    const prevNewDocumentKeyRef = useRef(null);
 
     // Reset AI-related UI/state whenever route file changes
     useEffect(() => {
@@ -74,7 +76,7 @@ export function useErdData(index, initialDocument = null) {
         setAiWorkingSql(null);
         setOriginalSqlInput('');
         setLineMapping(null);
-    }, [index]);
+    }, [index, newDocumentKey]);
 
     // Parse the committed SQL normally, or the non-persisted AI candidate
     // while a review is pending. The candidate never writes through to SQL.
@@ -167,8 +169,8 @@ export function useErdData(index, initialDocument = null) {
     useEffect(() => {
         const indexChanged = prevIndexRef.current !== index;
         prevIndexRef.current = index;
-        const transferChanged = prevInitialDocumentRef.current !== initialDocument;
-        prevInitialDocumentRef.current = initialDocument;
+        const newEntryChanged = prevNewDocumentKeyRef.current !== newDocumentKey;
+        prevNewDocumentKeyRef.current = newDocumentKey;
         // Invalidate older route work before handling the next document.
         const loadId = ++loadSeqRef.current;
 
@@ -176,11 +178,11 @@ export function useErdData(index, initialDocument = null) {
             if (index === 'new') {
                 // Reset state when navigating TO /e/new (including first mount).
                 // Skip duplicate resets so in-progress work survives rerenders.
-                if (indexChanged || transferChanged) {
+                if (indexChanged || newEntryChanged) {
                     setIsNewFile(true);
                     setIsOwner(true);
-                    setSqlInput(initialDocument?.sql || '');
-                    setFileName(initialDocument?.name || 'untitled');
+                    setSqlInput('');
+                    setFileName('untitled');
                     setOriginalData({ id: null, uuid: null, created_at: null, updated_at: null, sql: '', fileName: 'untitled', context: null });
                     erdContextRef.current = createDefaultContext();
                     setHasUnsavedChanges(false);
@@ -248,7 +250,8 @@ export function useErdData(index, initialDocument = null) {
         };
 
         loadErdData();
-    }, [index, initialDocument, setSqlInput, updateSchema]);
+        return () => { loadSeqRef.current += 1; };
+    }, [index, newDocumentKey, loadAttempt, setSqlInput, updateSchema]);
 
     return {
         sqlInput,
@@ -270,6 +273,7 @@ export function useErdData(index, initialDocument = null) {
         originalData,
         setOriginalData,
         isLoading,
+        retryLoad,
         loadVersion,
         schemaVersion,
         isOwner,

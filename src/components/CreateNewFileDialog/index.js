@@ -1,4 +1,4 @@
-/** Shared chooser for starting a new SQL, Prisma, or free-form ERD document. */
+/** Chooser for starting a SQL document from a sample, blank source, or imported files. */
 import React, { useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useModalFocus from '@/components/Modal/useModalFocus';
@@ -11,6 +11,7 @@ import ImportSqlIcon from '@/icons/ImportSqlIcon';
 
 const CreateNewFileDialog = ({
     isDisplay,
+    className = '',
     onSelectSample,
     onSelectBlank,
     onSelectImport,
@@ -28,7 +29,7 @@ const CreateNewFileDialog = ({
     if (!isDisplay) return null;
 
     const dialog = (
-        <div className="create-new-file-overlay">
+        <div className={`create-new-file-overlay ${className}`.trim()}>
             <div ref={dialogRef} className="create-new-file-dialog" role="dialog" aria-modal="true" aria-labelledby="create-new-file-title" tabIndex={-1}>
                 <div className="create-new-file-header">
                     <h2 id="create-new-file-title">{title}</h2>
@@ -72,9 +73,9 @@ const CreateNewFileDialog = ({
         </div>
     );
 
-    // Tool workspaces have intentionally broad, locally-scoped button styles.
-    // Render this shared modal outside those workspaces so its cards look and
-    // behave identically from SQL, Prisma, and ERD Builder routes.
+    // The SQL workspace has locally-scoped button styles.
+    // Render outside those workspaces to preserve shared card layout and modal
+    // behavior; className allows a tool to supply its own scoped accent.
     return typeof document === 'undefined' ? dialog : createPortal(dialog, document.body);
 };
 

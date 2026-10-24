@@ -15,6 +15,15 @@ export default function ErdPanel({ splitter, erdRendering, toggleTheme, viewMode
         query: isQueryView,
     }));
     const [retainedDataContent, setRetainedDataContent] = useState(dataContent);
+    const [showRenderProgress, setShowRenderProgress] = useState(false);
+    const isRendering = erdRendering?.isRendering === true;
+    // Fast paints need no flashing status. A slow fetch/layout gets compact
+    // feedback until the renderer reports an actual, nonzero canvas frame.
+    useEffect(() => {
+        if (!isRendering) { setShowRenderProgress(false); return; }
+        const timer = window.setTimeout(() => setShowRenderProgress(true), 150);
+        return () => window.clearTimeout(timer);
+    }, [isRendering]);
 
     // Mount each workbench lazily, then hide it instead of unmounting it. This
     // preserves table selection, native scroll positions, and editor view state
@@ -47,7 +56,7 @@ export default function ErdPanel({ splitter, erdRendering, toggleTheme, viewMode
 
     return (
         <div className="erd-panel" style={splitter.getPanelStyle(false)}>
-            <div id="erd-container" style={!isErdView ? { position: 'absolute', visibility: 'hidden', pointerEvents: 'none' } : undefined}>
+            <div id="erd-container" aria-busy={isRendering || undefined} style={!isErdView ? { position: 'absolute', visibility: 'hidden', pointerEvents: 'none' } : undefined}>
                 <canvas id="erd-canvas"></canvas>
                 <ErdControls erdRendering={erdRendering} showTableOwnerLabels={showTableOwnerLabels} onShowTableOwnerLabelsChange={onShowTableOwnerLabelsChange} />
                 <aside id="erd-minimap" className={`erd-minimap ${isMinimapOpen && isErdView ? 'is-open' : ''}`} aria-hidden={!isMinimapOpen || !isErdView}>
@@ -60,6 +69,11 @@ export default function ErdPanel({ splitter, erdRendering, toggleTheme, viewMode
                     />
                 </aside>
             </div>
+            {isErdView && (erdRendering?.renderError || isRendering && showRenderProgress) && (
+                <div className="erd-render-status" role={erdRendering?.renderError ? 'alert' : 'status'}>
+                    {erdRendering?.renderError ? <><span>Couldn’t draw the diagram.</span><button type="button" onClick={() => erdRendering.setFlag(value => value + 1)}>Retry</button></> : <><span className="erd-render-spinner" aria-hidden="true" /><span>Drawing diagram…</span></>}
+                </div>
+            )}
 
             {(mountedViews.data || isDataView) && (
                 <div className="erd-data-view" hidden={!isDataView} aria-hidden={!isDataView}>

@@ -12,7 +12,7 @@
  *
  *  PUBLIC API
  *  ----------
- *  default async function runErdScript(schema, options) → Promise<void>
+ *  default async function runErdScript(schema, options) → Promise<renderer API|undefined>
  *
  *    schema  — the renderer-facing schema produced by `sqlToErdSchema`. See
  *              the docblock in `erdJsonSchema.js` for the frozen shape
@@ -51,11 +51,18 @@
  *      headerActionsAlwaysVisible: boolean
  *                                  — when false, table header action icons
  *                                    appear only while hovering the header.
+ *      tableGroupsEnabled: boolean — opt-in SQL presentation frames; false
+ *                                    preserves other renderer consumers.
+ *      onTableGroupEdit: (id) => void
+ *                                  — opens React's group editor on header click;
+ *                                    omitting it keeps frame gestures read-only.
  *      onContextChange: (context) => void
  *                                  — fires whenever the user mutates
  *                                    persistent state (colors, positions,
  *                                    zoom, layout, hidden columns, …).
  *                                    Parent persists this for re-hydration.
+ *      isCurrentRender: () => boolean — rejects superseded async layouts
+ *      onFirstPaint:    () => void — called once after the first nonzero frame
  *      initialContext:  object|null
  *                                  — previously-saved context from this
  *                                    same callback. Re-hydrated verbatim.
@@ -66,6 +73,8 @@
  *                                    schema-aware, relationship-safe colors
  *                                    until the user manually picks a color.
  *    }
+ *    Returned API includes exportPng, setMinimapVisible and setTableGroups.
+ *    Group updates retain the current layout and camera and reject stale runs.
  *
  *  ARCHITECTURE — file organisation (sections in source order)
  *  -----------------------------------------------------------
@@ -100,21 +109,22 @@
  *
  *  COORDINATE SYSTEMS
  *  ------------------
- *    * Canvas pixels (CSS pixels × devicePixelRatio): what we actually draw
- *      to. The 2D context is scaled by DPR once per resize so all draw code
- *      can stay in CSS-pixel units.
+ *    * Canvas pixels (CSS pixels × devicePixelRatio): the backing store.
+ *      Each paint installs the camera transform explicitly.
  *    * World coordinates: each table's `(x, y)` lives in this space. They
- *      are transformed to screen by `screenX = (worldX + offsetX) * zoom`.
+ *      map to backing pixels by `pixelX = worldX * zoom + offsetX`.
  *    * Screen coordinates: pointer events arrive in here (CSS pixels
- *      relative to canvas). The inverse transform `(screen / zoom) - offset`
- *      gives the world point under the cursor.
+ *      relative to canvas). The inverse transform `(screen * DPR - offset)
+ *      / zoom` gives the world point under the cursor. The existing saved
+ *      camera stores backing-pixel zoom/offsets; do not reinterpret that data.
  *
  *  PERSISTENT CONTEXT (managed by ContextManager.js)
  *  -------------------------------------------------
  *    Anything that should survive across re-renders or page reloads goes
  *    through ContextManager. Snapshotted fields include: `tablePositions`,
  *    `tableColors`, `tableHeaderTextModes`, `tableCompactModes`, `priorityTableNames`, `zoom`,
- *    `offsetX`, `offsetY`, `layoutMode`, and `selectedNodeName`. Mutating
+ *    `offsetX`, `offsetY`, `layoutMode`, `selectedNodeName`, and optional
+ *    `tableGroups` (names, exact member identifiers, colors). Mutating
  *    these through ContextManager triggers `onContextChange` and the parent
  *    persists the diff.
  *
@@ -123,8 +133,9 @@
  *  • The canvas is CLONED at the top of every invocation to clear stale
  *    listeners. Hold references to `canvas` returned from this script —
  *    the original DOM node is replaced.
- *  • All drawing happens in CSS-pixel units; the 2D context is pre-scaled
- *    by `devicePixelRatio`. Do not multiply coordinates by DPR yourself.
+ *  • Dimensions and layout use world units. The camera already accounts for
+ *    DPR; do not multiply world coordinates by DPR again. Text rasterizes at
+ *    the final physical size while measurements stay in world units.
  *  • The render loop is request-animation-frame coalesced; never call
  *    `draw()` directly — schedule a redraw via `scheduleDraw()`.
  *  • Connector geometry is computed lazily and memoised per (zoom, layout,
@@ -158,6 +169,7 @@ function drawRoundRect(ctx, x, y, w, h, r) {
 }
 
 import { getErdExportBounds } from './erd-renderer/exportGeometry.js';
+import { syncCanvasSize } from './erd-renderer/canvasSize.js';
 
 // Color palette for tables
 import {
@@ -231,7 +243,8 @@ export {
     getRelationshipFieldKey,
     getSelectedRelationshipFieldKeys,
 } from './erd-renderer/interactionState.js';
-import { truncateCanvasTextToWidth, wrapCanvasTextToWidth } from './erd-renderer/canvasText.js';
+import { drawCanvasText, truncateCanvasTextToWidth, wrapCanvasTextToWidth } from './erd-renderer/canvasText.js';
+import { isCanvasTableVisible } from './erd-renderer/canvasVisibility.js';
 import {
     calculateEditableConnectorRoute,
     chooseConnectorSideFromPointer,
@@ -271,6 +284,9 @@ import { createCanvasSchemaControls } from './erd-renderer/canvasSchemaControls.
 import { countColumnConnectorSides, getColumnLabelSides } from './erd-renderer/columnActionPlacement.js';
 import './erd-renderer/canvasSchemaControls.css';
 import { findConnectorDropField } from './erd-renderer/endpointReconnect.js';
+import { getTableGroupFrames } from './erd-renderer/tableGroups.js';
+import { drawTableGroupFrames } from './erd-renderer/tableGroupCanvas.js';
+import { createTableGroupInteraction } from './erd-renderer/tableGroupInteraction.js';
 
 export {
     composeCanvasAlpha,
@@ -283,7 +299,7 @@ export {
     measureConstraintPillText,
 } from './erd-renderer/constraintPills.js';
 
-export default async function runErdScript(schema, { darkMode = false, fullConnect = false, inferredRelations = [], onTableDelete = null, onCanvasSchemaEdit = null, getCanvasColumnOptions = null, sqlDialect = 'auto', onJumpToTable = null, onRelationshipReconnect = null, onRelationshipReconnectTargets = null, onContextChange = null, tableOwners = {}, showTableOwnerLabels = false, headerActionsAlwaysVisible = true, initialContext = null, maxFitZoom = 2.0, autoColor = false } = {}) {
+export default async function runErdScript(schema, { darkMode = false, fullConnect = false, inferredRelations = [], onTableDelete = null, onCanvasSchemaEdit = null, getCanvasColumnOptions = null, sqlDialect = 'auto', onJumpToTable = null, onRelationshipReconnect = null, onRelationshipReconnectTargets = null, onContextChange = null, isCurrentRender = () => true, onFirstPaint = null, tableOwners = {}, showTableOwnerLabels = false, headerActionsAlwaysVisible = true, tableGroupsEnabled = false, onTableGroupEdit = null, initialContext = null, maxFitZoom = 2.0, autoColor = false } = {}) {
     // Normalize schema to prevent null access crashes
     if (!schema) schema = { enums: [], composites: [], tables: [], relations: [] };
     if (!Array.isArray(schema.tables)) schema.tables = [];
@@ -307,6 +323,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
 
     const contextManager = new ContextManager(initialContext, onContextChange);
     const connectorGradientColorCache = new Map();
+    const getGroupFrames = () => tableGroupsEnabled ? getTableGroupFrames(contextManager.tableGroups, schema.tables) : [];
 
     // Ownership stays available to the table navigator, deletion preview, and
     // jump-to-SQL action. This preference only changes what table headers draw.
@@ -466,8 +483,8 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     //      compact mode) and the canvas-level pointer / wheel / touch
     //      listeners (those live in section 10 — this section just creates
     //      the DOM nodes they hang off).
-    //    • Sets up a ResizeObserver so the canvas re-fits whenever its
-    //      container reflows (parent grid / split-pane drag).
+    //    • Observes the host so panel-only reflows resize the backing store
+    //      in the paint loop, retaining the camera within its existing limits.
     //
     //  IMPORTANT: never reach DOM elements via `document.getElementById`
     //  later in this closure — always use the references captured here.
@@ -1051,11 +1068,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     updateLayoutModeButton();
 
     // ════════════════════════════════════════════════════════════════════
-    //  SECTION 3 — UI dimension constants (CSS-pixel units)
+    //  SECTION 3 — UI dimension constants (world units)
     // ════════════════════════════════════════════════════════════════════
-    //  Every constant below is in CSS pixels. The 2D context is pre-scaled
-    //  by `devicePixelRatio` once per resize so all draw code can stay in
-    //  CSS-pixel units — do NOT multiply these by DPR yourself.
+    //  Every constant below is in world units. Each paint installs the saved
+    //  backing-pixel camera — do NOT multiply these by DPR yourself.
     //
     //  Changing these values rebalances the visual density of the diagram:
     //    • PADDING_TABLE_LR : whitespace inside each card
@@ -1102,6 +1118,9 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     //  layout for tables the user has manually moved — only NEW tables get
     //  auto-positioned, so re-renders don't snap dragged tables back.
     // ════════════════════════════════════════════════════════════════════
+    // Derived paint bounds stay outside schema/context serialization. Reuse the
+    // existing layout measurements so culling never measures fonts per frame.
+    const tableColumnPaintOverflow = new WeakMap();
     // Dynamically calculate width for each table based on table name, column names, types, constraints, and icons
     function getTableWidth(tbl, ctx) {
         if (!tbl || !tbl.columns) return 180;
@@ -1113,12 +1132,33 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         ctx.font = 'bold 16px sans-serif';
         let max = ctx.measureText(tbl.name).width + ownerWidth + 132; // owner label + enlarged priority, jump-to-code, color, and compact-mode icons
         ctx.font = '14px sans-serif';
+        // Widths are unchanged by baseline choice. Include actual glyph ink in
+        // paint bounds: combining marks can extend beyond their row or advance.
+        ctx.textBaseline = 'middle';
+        let widestColumn = 0;
+        let horizontalInkOverflow = 0;
+        let verticalInkOverflow = 0;
+        const includeColumnInk = (metrics, text) => {
+            // WebKit can report only the base glyph's bounds for stacked marks.
+            // Always paint those cards at every display scale.
+            if (/\p{Mark}/u.test(text)) {
+                horizontalInkOverflow = Infinity;
+                verticalInkOverflow = Infinity;
+                return;
+            }
+            horizontalInkOverflow = Math.max(horizontalInkOverflow, metrics.actualBoundingBoxLeft, metrics.actualBoundingBoxRight - metrics.width);
+            verticalInkOverflow = Math.max(verticalInkOverflow, metrics.actualBoundingBoxAscent - ROW_H / 2, metrics.actualBoundingBoxDescent - ROW_H / 2);
+        };
         tbl.columns.forEach((col) => {
-            const colNameW = ctx.measureText(col.name).width;
+            const colNameMetrics = ctx.measureText(col.name);
+            const colNameW = colNameMetrics.width;
+            includeColumnInk(colNameMetrics, col.name);
             let suffix = col.type;
             if (col.pk) suffix += ' 🔑';
             if (col.fk) suffix += ' 🔗';
-            let typeW = ctx.measureText(suffix).width;
+            const typeMetrics = ctx.measureText(suffix);
+            let typeW = typeMetrics.width;
+            includeColumnInk(typeMetrics, suffix);
             let constraintW = 0;
             if (col.constraints && Array.isArray(col.constraints) && col.constraints.length > 0) {
                 ctx.font = '12px sans-serif';
@@ -1129,10 +1169,16 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
                 ctx.font = '14px sans-serif';
             }
             const totalW = PADDING_TABLE_LR + colNameW + 16 + typeW + constraintW + PADDING_TABLE_LR;
+            widestColumn = Math.max(widestColumn, totalW);
             if (totalW > max) max = totalW;
         });
         ctx.restore();
-        return Math.max(180, Math.min(max, 420));
+        const width = Math.max(180, Math.min(max, 420));
+        tableColumnPaintOverflow.set(tbl, {
+            horizontal: Math.max(0, widestColumn - width) + horizontalInkOverflow,
+            vertical: verticalInkOverflow,
+        });
+        return width;
     }
 
     function buildSnowflakeLayoutPositions(schema, edges) {
@@ -1363,6 +1409,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
 
         // 4. Restore previously saved positions; use new layout for new tables
+        if (!isCurrentRender()) return;
         schema.tables.forEach((tbl, idx) => {
             const savedPosition = contextManager.getTablePosition(tbl.name);
             if (savedPosition) {
@@ -1388,6 +1435,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
 
     // Compute initial table layout
     await computeTableLayoutWithELK(schema, currentLayoutMode);
+    if (!isCurrentRender()) return;
 
     // Clone the canvas node to clear all previous event listeners on each
     // script run. Bail out gracefully if the host page never mounted the
@@ -1789,7 +1837,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
         ctx.fillStyle = theme.nodeFill;
         ctx.strokeStyle = theme.nodeBorder;
-        ctx.lineWidth = 0.3;
+        ctx.lineWidth = 0.3; // canvasVisibility includes half this scaled border in its paint bounds.
         drawRoundRect(ctx, tbl.x - tbl.width / 2, tbl.y - tbl.height / 2, tbl.width, tbl.height, borderTableRadius);
         ctx.fill();
         ctx.stroke();
@@ -1911,7 +1959,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         ctx.rect(textX, headerY, textMaxWidth, NODE_H);
         ctx.clip();
         const tableNameText = truncateCanvasTextToWidth(ctx, tbl.name, textMaxWidth);
-        ctx.fillText(tableNameText, textX, textY);
+        drawCanvasText(ctx, tableNameText, textX, textY);
 
         const ownerTitle = getVisibleTableOwnerTitle(tbl.name);
         if (ownerTitle && tableNameText) {
@@ -1922,7 +1970,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             const ownerMaxWidth = Math.max(0, textRight - ownerX);
             const ownerText = truncateCanvasTextToWidth(ctx, ownerLabel, ownerMaxWidth);
             if (ownerText) {
-                ctx.fillText(ownerText, ownerX, textY);
+                drawCanvasText(ctx, ownerText, ownerX, textY);
             }
         }
         ctx.restore();
@@ -2038,7 +2086,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         ctx.textBaseline = 'middle';
         texts.forEach((t, i) => {
             const lineY = topY + ROW_H * i + ROW_H / 2 + shiftY;
-            ctx.fillText(t.trim(), boxX + PAD_X, lineY + 1); // +1 to align with 12px font
+            drawCanvasText(ctx, t.trim(), boxX + PAD_X, lineY + 1); // +1 to align with 12px font
         });
 
         ctx.restore();
@@ -2192,7 +2240,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             ctx.fillStyle = idx === 0 ? theme.text : theme.tooltipText;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
-            ctx.fillText(line.text, boxX + padX, boxY + padY + lineH * idx + lineH / 2);
+            drawCanvasText(ctx, line.text, boxX + padX, boxY + padY + lineH * idx + lineH / 2);
         });
         ctx.restore();
     }
@@ -2233,7 +2281,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
 
         // text
         ctx.fillStyle = opts.color || '#ffffff';
-        ctx.fillText(text, x + pillLayout.width / 2, getCenteredCanvasTextBaseline(y, textMetrics));
+        drawCanvasText(ctx, text, x + pillLayout.width / 2, getCenteredCanvasTextBaseline(y, textMetrics));
         ctx.restore();
 
         return pillLayout.width;
@@ -2321,7 +2369,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             ctx.font = '14px sans-serif';
             // Draw attribute name
             let name = col.name;
-            ctx.fillText(name, tbl.x - tbl.width / 2 + PADDING_TABLE_LR, y);
+            drawCanvasText(ctx, name, tbl.x - tbl.width / 2 + PADDING_TABLE_LR, y);
             // Draw icon
             let iconX = tbl.x - tbl.width / 2 + PADDING_TABLE_LR + ctx.measureText(name).width + 6;
             let iconSize = 12;
@@ -2368,7 +2416,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             ctx.font = '14px sans-serif';
             ctx.fillStyle = theme.typeText;
             ctx.textAlign = 'left';
-            ctx.fillText(typeStr, baseX, y);
+            drawCanvasText(ctx, typeStr, baseX, y);
 
             // Draw constraint text (PK/UQ); composite pills are lighter
             let cx = baseX + typeW + 5;
@@ -2906,7 +2954,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(label, midpoint.x, midpoint.y + 0.5);
+        drawCanvasText(ctx, label, midpoint.x, midpoint.y + 0.5);
         ctx.restore();
     }
 
@@ -2918,35 +2966,35 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     //                        sees in layout.
     //    2. Backing-store  : `canvas.{width, height}` = CSS × DPR — the
     //                        resolution we actually rasterise to.
-    //    3. Context scale  : `ctx.scale(DPR, DPR)` — applied once per
-    //                        resize so the rest of the code can ignore DPR.
+    //    3. Camera scale   : each paint installs the backing-pixel zoom/pan
+    //                        explicitly, replacing the resize-time transform.
     //
     //  Zoom / pan are stored in `contextManager.zoom`, `offsetX`, `offsetY`
-    //  (world-coordinate units). The world→screen transform for a point
+    //  (backing-pixel scale/translation). The world→backing transform for a point
     //  `(wx, wy)` is:
-    //                screenX = (wx + offsetX) * zoom
-    //                screenY = (wy + offsetY) * zoom
+    //                pixelX = wx * zoom + offsetX
+    //                pixelY = wy * zoom + offsetY
+    //  CSS screen coordinates divide these results by DPR. These are the
+    //  established persisted camera units; clarity changes never rescale them.
     //
     //  Wheel events drive zoom; click+drag on empty canvas drives pan;
     //  click+drag on a table card drives table reposition (section 10).
     // ════════════════════════════════════════════════════════════════════
-    // Function to resize canvas when window size changes
+    // Size and paint in the same renderer frame. The panel must not clear
+    // this DPR-sized bitmap or broadcast a synthetic window resize first.
+    const canvasContainer = document.getElementById('erd-container');
+    let canvasResizePending = false;
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
-        const container = document.getElementById('erd-container');
-        const w = container.clientWidth;
-        const h = container.clientHeight;
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        canvas.style.width = w + 'px';
-        canvas.style.height = h + 'px';
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.scale(dpr, dpr);
+        if (syncCanvasSize(canvas, canvasContainer, dpr)) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+        }
     }
     resizeCanvas();
 
-    // Cleanup old event listeners before adding new ones
-    const handleResize = () => {
+    const applyPendingCanvasResize = () => {
+        canvasResizePending = false;
         resizeCanvas();
         if (colorPopup && colorPopup.style.display === 'flex') {
             updateColorPopupLayout();
@@ -2965,6 +3013,13 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         } else {
             clampCurrentZoomToLimits();
         }
+        scheduleDraw();
+    };
+
+    // Both real viewport changes and panel-only changes enter the existing
+    // paint loop. Repeated observations collapse into one resize and draw.
+    const handleResize = () => {
+        canvasResizePending = true;
         scheduleDraw();
     };
 
@@ -3001,10 +3056,24 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
     }
     let disposed = false;
+    let canvasResizeObserver = null;
+    let ownedDocMouseDownHandler = null;
+    let tableGroupInteraction = null;
     window._erdStopPrev = () => {
+        if (disposed) return;
+        canvasResizeObserver?.disconnect();
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('erd-force-fit', handleForceFit);
+        if (ownedDocMouseDownHandler) document.removeEventListener('mousedown', ownedDocMouseDownHandler);
+        if (window._erdResizeHandler === handleResize) window._erdResizeHandler = null;
+        if (window._erdForceFitHandler === handleForceFit) window._erdForceFitHandler = null;
+        if (window._erdDocMouseDownHandler === ownedDocMouseDownHandler) window._erdDocMouseDownHandler = null;
+        if (window._erdStopPrev === disposeRenderer) window._erdStopPrev = null;
         canvasSchemaControls.dispose();
+        tableGroupInteraction?.dispose();
         disposed = true;
     };
+    const disposeRenderer = window._erdStopPrev;
 
     // Store handlers for cleanup
     window._erdResizeHandler = handleResize;
@@ -3013,6 +3082,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     // Add new listeners
     window.addEventListener('resize', handleResize);
     window.addEventListener('erd-force-fit', handleForceFit);
+    if (typeof ResizeObserver !== 'undefined') {
+        canvasResizeObserver = new ResizeObserver(handleResize);
+        canvasResizeObserver.observe(canvasContainer);
+    }
 
     // ════════════════════════════════════════════════════════════════════
     //  SECTION 8 — Fit-to-screen (auto-zoom + auto-pan to bounding box)
@@ -3037,7 +3110,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     function getViewportFit() {
         syncTableHeights();
         return calculateErdViewportFit({
-            tables: schema.tables,
+            tables: [...schema.tables, ...getGroupFrames()],
             viewportWidth: canvas.width,
             viewportHeight: canvas.height,
             maxFitZoom,
@@ -3106,6 +3179,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     //  unless you're rendering off-screen (e.g. PNG export).
     //
     //  Z-order, bottom to top:
+    //    0.   Optional table group frames      (presentation only)
     //    1.   Normal connectors                (faded if a table is selected)
     //    1.5  Hovered-row connectors           (highlighted color)
     //    2.   Selected-table connectors        (full opacity, on top of 1)
@@ -3158,6 +3232,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         priorityLayerState = getPriorityLayerState(connectorPaths, contextManager.priorityTableNames);
 
         if (wantBelow) {
+            drawTableGroupFrames(drawCtx, getGroupFrames(), darkMode);
             // ====== Z-INDEX: 1. DRAW NORMAL CONNECTORS OR FULL CONNECT ======
             connectorPaths.forEach((conn, i) => {
                 if (!conn || !conn.relation || !conn.points || conn.points.length < 2) return;
@@ -3237,7 +3312,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         });
 
         // ====== Z-INDEX: 4. DRAW TABLES (top layer) ======
+        const paintViewport = { zoom, offsetX, offsetY, width: drawCanvas.width, height: drawCanvas.height };
         schema.tables.forEach((tbl) => {
+            const overflow = tableColumnPaintOverflow.get(tbl);
+            if (!isCanvasTableVisible(tbl, paintViewport, overflow?.horizontal, overflow?.vertical)) return;
             const borderTableRadius = 4;
             drawWithAlpha(drawCtx, getPriorityTableAlpha(tbl.name), () => {
                 drawNodeBox(drawCtx, tbl, borderTableRadius);
@@ -3382,6 +3460,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         });
         minimapModel = calculateErdMinimapModel({
             tables: schema.tables,
+            groups: getGroupFrames(),
             viewport,
             width,
             height,
@@ -3409,6 +3488,13 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             }
         }
 
+        for (const group of minimapModel.groupRects) {
+            minimapCtx.strokeStyle = group.color || (darkMode ? '#a69bd8' : '#7865ad');
+            minimapCtx.lineWidth = Math.max(1, dpr * 0.7);
+            minimapCtx.globalAlpha = 0.6;
+            minimapCtx.strokeRect(group.x, group.y, group.width, group.height);
+            minimapCtx.globalAlpha = 1;
+        }
         const tableRectByName = new Map(minimapModel.tableRects.map((rect) => [rect.name, rect]));
         minimapCtx.lineWidth = Math.max(1, dpr * 0.8);
         minimapCtx.strokeStyle = darkMode ? 'rgba(148,163,184,0.38)' : 'rgba(71,85,105,0.3)';
@@ -3476,9 +3562,9 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     // ════════════════════════════════════════════════════════════════════
     //  Animation loop — rAF-coalesced redraw
     // ════════════════════════════════════════════════════════════════════
-    //  All callers schedule redraws via `scheduleDraw()`. The function uses
-    //  a single `requestAnimationFrame` token so dozens of mutations in one
-    //  task (drag + scroll + hover) collapse into ONE draw per frame.
+    //  All callers mark redraws via `scheduleDraw()` / `requestRedraw()`.
+    //  The existing animation loop is the only painter, so drag, resize,
+    //  scroll and hover collapse into ONE full scene per frame.
     //
     //  When a table is selected, the loop also bumps `flowOffset` every
     //  frame so the connector dash pattern visibly flows. When nothing is
@@ -3590,6 +3676,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     // Called whenever the scene actually changed. When the container is
     // momentarily 0×0 we bail out quietly — the next valid paint will pick
     // it back up once the layout settles.
+    let firstPaintNotified = false;
     function renderFullScene() {
         if (baseCanvas.width === 0 || baseCanvas.height === 0) {
             staticCacheValid = false;
@@ -3613,6 +3700,10 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
         renderMinimap();
         canvasSchemaControls.update();
+        if (!firstPaintNotified) {
+            firstPaintNotified = true;
+            if (typeof onFirstPaint === 'function') onFirstPaint();
+        }
     }
 
     // Per-animation-frame fast path: blit cached layers and restroke only
@@ -3646,14 +3737,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     function scheduleDraw() {
         if (disposed) return;
         invalidateStaticCache();
-        if (!needsRedraw) {
-            needsRedraw = true;
-            requestAnimationFrame(() => {
-                if (disposed) return;
-                needsRedraw = false;
-                renderFullScene();
-            });
-        }
+        needsRedraw = true;
     }
 
     function requestRedraw() {
@@ -3685,11 +3769,13 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     const FLOW_SPEED = 60;
     const FLOW_MIN_INTERVAL = 1000 / 30;
     function animationLoop(ts) {
-        if (disposed) {
+        if (disposed || !baseCanvas.isConnected) {
+            disposeRenderer();
             // Drop references so the GC can reclaim the offscreen canvases.
             belowCanvas = belowCtx = aboveCanvas = aboveCtx = null;
             return;
         }
+        if (canvasResizePending) applyPendingCanvasResize();
         const visible = typeof document === 'undefined' || document.visibilityState !== 'hidden';
         // A detached / collapsed container reports 0×0; skip entirely until
         // the next resize brings it back.
@@ -3732,7 +3818,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         let diagramBounds = null;
         if (options.scope === 'diagram') {
             syncTableHeights();
-            diagramBounds = getErdExportBounds(schema.tables, buildConnectorPaths(schema, safeInferredRelations));
+            diagramBounds = getErdExportBounds(schema.tables, buildConnectorPaths(schema, safeInferredRelations), getGroupFrames());
             if (!diagramBounds) return null;
         }
         const baseWidth = diagramBounds?.width ?? canvas.width;
@@ -3919,6 +4005,17 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             x: (x - contextManager.offsetX) / contextManager.zoom,
             y: (y - contextManager.offsetY) / contextManager.zoom,
         };
+    }
+
+    if (tableGroupsEnabled && typeof onTableGroupEdit === 'function') {
+        tableGroupInteraction = createTableGroupInteraction({
+            canvas, getFrames: getGroupFrames, getTables: () => schema.tables, screenToWorld,
+            isActive: () => !disposed && isCurrentRender() && canvas.isConnected,
+            onPreview: requestRedraw,
+            onCommit: positions => { contextManager.bulkSetTablePositions(positions); requestRedraw(); },
+            onEdit: onTableGroupEdit,
+            onStart: () => { hideHeaderActionPopups(); hideConnectorSidePopup(); hoveredRow = { table: null, rowIdx: null }; hoveredConnectorIdxList = []; requestRedraw(); },
+        });
     }
 
     function hideHeaderActionPopups({ keepColor = false } = {}) {
@@ -4209,7 +4306,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
             requestRedraw();
         }
         if (found === null) {
-            canvas.style.cursor = 'default';
+            canvas.style.cursor = tableGroupsEnabled && getGroupFrames().some(frame => x >= frame.x - frame.width / 2 && x <= frame.x + frame.width / 2 && y >= frame.y - frame.height / 2 && y <= frame.y - frame.height / 2 + 32) ? 'grab' : 'default';
         }
     });
     canvas.addEventListener('mouseup', (e) => {
@@ -4902,8 +4999,8 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     // through `window._erdDocMouseDownHandler` — without this, every
     // re-render (every keystroke in the SQL editor) would stack a fresh
     // listener on `document`, leaking memory and firing the dismiss logic
-    // N times per click. Mirrors the resize / force-fit handler pattern
-    // established at line 1816.
+    // N times per click. Replacement and detached-canvas disposal both
+    // remove the owning renderer's listener.
     if (window._erdDocMouseDownHandler) {
         document.removeEventListener('mousedown', window._erdDocMouseDownHandler);
     }
@@ -4929,6 +5026,7 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
         }
     };
     window._erdDocMouseDownHandler = docMouseDownHandler;
+    ownedDocMouseDownHandler = docMouseDownHandler;
     document.addEventListener('mousedown', docMouseDownHandler);
 
     // Handle hex input when manually typed
@@ -5067,13 +5165,13 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     //  point at a phantom — this section purges it so we never try to
     //  draw a tooltip / spotlight for a missing table.
     //
-    //  Persisted ContextManager fields (positions, colors) intentionally
+    //  Persisted ContextManager fields (positions, colors, groups) intentionally
     //  survive the cleanup so re-creating a table with the same name
     //  restores its previous look.
     // ════════════════════════════════════════════════════════════════════
 
     // Only clear selection for removed tables; keep positions, colors,
-    // and compact modes so they survive temporary parse errors (e.g.
+    // compact modes, and group memberships so they survive temporary parse errors (e.g.
     // unbalanced parentheses) and are restored when the user fixes the SQL.
     const tableNames = new Set(schema.tables.map((t) => t.name));
     if (contextManager.context.selectedNodeName && !tableNames.has(contextManager.context.selectedNodeName)) {
@@ -5089,5 +5187,13 @@ export default async function runErdScript(schema, { darkMode = false, fullConne
     return {
         exportPng,
         setMinimapVisible,
+        setTableGroups(groups) {
+            if (!tableGroupsEnabled || disposed || !isCurrentRender() || !canvas.isConnected) return false;
+            tableGroupInteraction?.cancel();
+            if (!contextManager.setTableGroups(groups)) return false;
+            refreshZoomLimits();
+            requestRedraw();
+            return true;
+        },
     };
 }

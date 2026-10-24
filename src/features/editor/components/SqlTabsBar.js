@@ -136,8 +136,8 @@ export default function SqlTabsBar({
         const closeContextMenu = () => setContextMenu(null);
         const viewport = { width: window.innerWidth, height: window.innerHeight };
         const handleViewportResize = () => {
-            // Canvas refreshes dispatch synthetic resize events after SQL
-            // changes. They must not dismiss a menu the user just opened.
+            // Unchanged viewport notifications must not dismiss a menu the
+            // user just opened.
             if (window.innerWidth !== viewport.width || window.innerHeight !== viewport.height) closeContextMenu();
         };
         const handleKeyDown = (event) => {

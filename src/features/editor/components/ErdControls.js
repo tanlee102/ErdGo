@@ -11,6 +11,7 @@ import ListIcon from '@/icons/ListIcon';
 import AutoColorOnlyIcon from '@/icons/AutoColorOnlyIcon';
 import RelationshipSuggestionsPanel from './RelationshipSuggestionsPanel';
 import ErdControlHelp from './ErdControlHelp';
+import ErdTableGroupsControl from './ErdTableGroupsControl';
 
 export default function ErdControls({ erdRendering, showTableOwnerLabels = false, onShowTableOwnerLabelsChange, canEditSchema = true }) {
     const { setDisplayModalAddTable } = useContext(RootLayoutContext);
@@ -110,6 +111,8 @@ export default function ErdControls({ erdRendering, showTableOwnerLabels = false
                     <div id="table-nav-list" className="table-nav-list"></div>
                 </div>
             </div>
+
+            {erdRendering.tableGroups && <ErdTableGroupsControl key={erdRendering.tableGroups.documentKey} controller={erdRendering.tableGroups} />}
 
             <div className="erd-control-popover">
                 <button className="erd-btn" id="auto-color-only-btn" type="button" aria-label="Table Colors" data-erd-help="Apply a palette or clear table colors" aria-haspopup="dialog" aria-controls="auto-color-popup" aria-expanded="false">

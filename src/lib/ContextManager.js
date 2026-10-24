@@ -1,6 +1,19 @@
 import { normalizeConnectorEndpointSides, normalizeConnectorSide } from './erd-renderer/connectorRouting.js';
+import { normalizeTableGroups } from './erd-renderer/tableGroups.js';
 
 const TABLE_HEADER_TEXT_MODES = new Set(['white', 'black']);
+const validTablePosition = value => value && typeof value === 'object' && !Array.isArray(value) && Number.isFinite(value.x) && Number.isFinite(value.y);
+const tableValueValidators = {
+    tablePositions: validTablePosition,
+    tableColors: value => typeof value === 'string' && Boolean(value.trim()),
+    tableCompactModes: value => typeof value === 'boolean',
+};
+
+/** SQL identifiers are arbitrary strings, including names such as __proto__. */
+function normalizeTableDictionary(value, validEntry = () => true) {
+    const entries = value && typeof value === 'object' && !Array.isArray(value) ? Object.entries(value) : [];
+    return Object.assign(Object.create(null), Object.fromEntries(entries.filter(([name, item]) => name.trim() && validEntry(item))));
+}
 
 function normalizeTableHeaderTextMode(mode) {
     if (typeof mode !== 'string') return null;
@@ -49,13 +62,20 @@ export default class ContextManager {
             ...(initialContext || {}),
         };
 
-        // Backward compatibility: ensure nested objects exist
-        if (!this.context.tablePositions) this.context.tablePositions = {};
-        if (!this.context.tableColors) this.context.tableColors = {};
-        this.context.tableHeaderTextModes = normalizeTableHeaderTextModes(this.context.tableHeaderTextModes);
-        if (!this.context.tableCompactModes) this.context.tableCompactModes = {};
-        this.context.connectorEndpointSides = normalizeConnectorEndpointSides(this.context.connectorEndpointSides);
+        // Recover malformed saved maps without treating SQL names as inherited
+        // object properties. These dictionaries still serialize as ordinary JSON.
+        for (const [key, validEntry] of Object.entries(tableValueValidators)) this.context[key] = normalizeTableDictionary(this.context[key], validEntry);
+        this.context.tableHeaderTextModes = normalizeTableDictionary(normalizeTableHeaderTextModes(this.context.tableHeaderTextModes));
+        this.context.connectorEndpointSides = normalizeTableDictionary(normalizeConnectorEndpointSides(this.context.connectorEndpointSides));
+        if (!Number.isFinite(this.context.zoom) || this.context.zoom <= 0) this.context.zoom = undefined;
+        if (!Number.isFinite(this.context.offsetX)) this.context.offsetX = undefined;
+        if (!Number.isFinite(this.context.offsetY)) this.context.offsetY = undefined;
         this.context.priorityTableNames = this._normalizeTableNameList(this.context.priorityTableNames);
+        // An unused additive field stays absent in legacy files. Membership is
+        // independent of the live schema, which can temporarily omit tables.
+        const tableGroups = normalizeTableGroups(this.context.tableGroups);
+        if (tableGroups.length) this.context.tableGroups = tableGroups;
+        else delete this.context.tableGroups;
 
         this.onContextChange = onContextChange;
         this._pendingNotification = false;
@@ -76,7 +96,7 @@ export default class ContextManager {
     }
 
     get hasExplicitZoomPan() {
-        return typeof this.context.zoom === 'number' && !isNaN(this.context.zoom) && typeof this.context.offsetX === 'number' && !isNaN(this.context.offsetX) && typeof this.context.offsetY === 'number' && !isNaN(this.context.offsetY);
+        return Number.isFinite(this.context.zoom) && this.context.zoom > 0 && Number.isFinite(this.context.offsetX) && Number.isFinite(this.context.offsetY);
     }
 
     get selectedNodeName() {
@@ -111,10 +131,14 @@ export default class ContextManager {
         return this.context.connectorEndpointSides || {};
     }
 
+    get tableGroups() {
+        return this.context.tableGroups || [];
+    }
+
     // ===== SETTER METHODS =====
 
     setZoom(value) {
-        if (value !== undefined && (typeof value !== 'number' || isNaN(value) || value <= 0)) {
+        if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
             return false;
         }
 
@@ -126,8 +150,8 @@ export default class ContextManager {
     }
 
     setOffset(x, y) {
-        const validX = x === undefined || (typeof x === 'number' && !isNaN(x));
-        const validY = y === undefined || (typeof y === 'number' && !isNaN(y));
+        const validX = x === undefined || Number.isFinite(x);
+        const validY = y === undefined || Number.isFinite(y);
 
         if (!validX || !validY) {
             return false;
@@ -142,7 +166,7 @@ export default class ContextManager {
     }
 
     setOffsetX(value) {
-        if (value !== undefined && (typeof value !== 'number' || isNaN(value))) {
+        if (value !== undefined && !Number.isFinite(value)) {
             return false;
         }
 
@@ -154,7 +178,7 @@ export default class ContextManager {
     }
 
     setOffsetY(value) {
-        if (value !== undefined && (typeof value !== 'number' || isNaN(value))) {
+        if (value !== undefined && !Number.isFinite(value)) {
             return false;
         }
 
@@ -185,6 +209,17 @@ export default class ContextManager {
 
         if (JSON.stringify(this.context.priorityTableNames || []) !== JSON.stringify(normalized)) {
             this.context.priorityTableNames = normalized;
+            this._scheduleNotifyChange();
+        }
+        return true;
+    }
+
+    setTableGroups(groups) {
+        if (!Array.isArray(groups)) return false;
+        const normalized = normalizeTableGroups(groups);
+        if (JSON.stringify(this.tableGroups) !== JSON.stringify(normalized)) {
+            if (normalized.length) this.context.tableGroups = normalized;
+            else delete this.context.tableGroups;
             this._scheduleNotifyChange();
         }
         return true;
@@ -224,7 +259,7 @@ export default class ContextManager {
             return false;
         }
 
-        if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y)) {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
             return false;
         }
 
@@ -284,7 +319,7 @@ export default class ContextManager {
         }
 
         if (!this.context.tableCompactModes) {
-            this.context.tableCompactModes = {};
+            this.context.tableCompactModes = normalizeTableDictionary();
         }
 
         // Convert to boolean for proper comparison (handles undefined vs false)
@@ -358,7 +393,7 @@ export default class ContextManager {
         }
 
         let hasChanges = false;
-        const allowedKeys = ['zoom', 'offsetX', 'offsetY', 'selectedNodeName', 'priorityTableNames', 'layoutMode', 'tablePositions', 'tableColors', 'tableHeaderTextModes', 'tableCompactModes', 'connectorEndpointSides'];
+        const allowedKeys = ['zoom', 'offsetX', 'offsetY', 'selectedNodeName', 'priorityTableNames', 'tableGroups', 'layoutMode', 'tablePositions', 'tableColors', 'tableHeaderTextModes', 'tableCompactModes', 'connectorEndpointSides'];
 
         Object.keys(updates).forEach((key) => {
             if (!allowedKeys.includes(key)) return;
@@ -379,8 +414,10 @@ export default class ContextManager {
                 if (!Array.isArray(newValue)) return;
             }
 
-            if (key === 'connectorEndpointSides') {
-                const normalizedSides = normalizeConnectorEndpointSides(newValue);
+            if (key === 'tableGroups') {
+                if (Array.isArray(newValue)) this.setTableGroups(newValue);
+            } else if (key === 'connectorEndpointSides') {
+                const normalizedSides = normalizeTableDictionary(normalizeConnectorEndpointSides(newValue));
                 if (JSON.stringify(this.context.connectorEndpointSides) !== JSON.stringify(normalizedSides)) {
                     this.context.connectorEndpointSides = normalizedSides;
                     hasChanges = true;
@@ -395,11 +432,11 @@ export default class ContextManager {
                     });
                 }
             } else if (key === 'tablePositions' || key === 'tableColors' || key === 'tableCompactModes') {
-                if (typeof newValue === 'object' && newValue !== null) {
-                    if (!this.context[key]) this.context[key] = {};
-                    Object.keys(newValue).forEach((subKey) => {
-                        if (JSON.stringify(this.context[key][subKey]) !== JSON.stringify(newValue[subKey])) {
-                            this.context[key][subKey] = newValue[subKey];
+                if (typeof newValue === 'object' && newValue !== null && !Array.isArray(newValue)) {
+                    const entries = normalizeTableDictionary(newValue, tableValueValidators[key]);
+                    Object.keys(entries).forEach((subKey) => {
+                        if (JSON.stringify(this.context[key][subKey]) !== JSON.stringify(entries[subKey])) {
+                            this.context[key][subKey] = entries[subKey];
                             hasChanges = true;
                         }
                     });
@@ -420,14 +457,15 @@ export default class ContextManager {
     }
 
     bulkSetTablePositions(positions) {
-        if (!positions || typeof positions !== 'object') {
+        if (!positions || typeof positions !== 'object' || Array.isArray(positions)) {
             return false;
         }
 
         let hasChanges = false;
         Object.keys(positions).forEach((tableName) => {
-            const { x, y } = positions[tableName];
-            if (typeof x === 'number' && typeof y === 'number' && !isNaN(x) && !isNaN(y)) {
+            const position = positions[tableName];
+            if (tableName.trim() && validTablePosition(position)) {
+                const { x, y } = position;
                 const currentPos = this.context.tablePositions[tableName];
                 if (!currentPos || currentPos.x !== x || currentPos.y !== y) {
                     this.context.tablePositions[tableName] = { x, y };
@@ -468,7 +506,7 @@ export default class ContextManager {
 
     resetPositions() {
         if (Object.keys(this.context.tablePositions).length > 0) {
-            this.context.tablePositions = {};
+            this.context.tablePositions = normalizeTableDictionary();
             this._scheduleNotifyChange();
         }
     }
@@ -486,7 +524,7 @@ export default class ContextManager {
 
     clearAllTableHeaderTextModes() {
         if (Object.keys(this.context.tableHeaderTextModes).length > 0) {
-            this.context.tableHeaderTextModes = {};
+            this.context.tableHeaderTextModes = normalizeTableDictionary();
             this._scheduleNotifyChange();
         }
         return true;

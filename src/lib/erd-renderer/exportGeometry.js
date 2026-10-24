@@ -1,8 +1,8 @@
 /** Padded world bounds for optional full-diagram capture; viewport export keeps its original sizing. */
 import { getErdBounds } from '../erdViewport.js';
 
-export function getErdExportBounds(tables, connectors = []) {
-    const bounds = getErdBounds(tables);
+export function getErdExportBounds(tables, connectors = [], groups = []) {
+    const bounds = getErdBounds([...(tables || []), ...groups]);
     if (!bounds) return null;
     // Routed/self-loop edges can extend beyond table cards.
     for (const connector of connectors) {

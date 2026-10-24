@@ -77,7 +77,8 @@ CREATE INDEX idx_order_items_product ON order_items (product_id);
 
 `;
 
-export const sampleDataSQL = `-- Compact rows for Data View.
+export const sampleDataSQL = `-- Commerce starter rows: use only with the matching built-in Schema tab.
+-- For your own schema, make this tab inactive and use Data > Generate sample data.
 INSERT INTO users (id, email, full_name, role, flags, last_seen_at) VALUES
   (1, 'alice@example.com', 'Alice', 'admin', 'newsletter,beta', '2026-06-01'),
   (2, 'bob@example.com', 'Bob', 'member', 'newsletter', 'never');

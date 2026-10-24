@@ -13,6 +13,14 @@ const tables = [
 ];
 
 describe('ERD minimap geometry', () => {
+    it('projects optional group frames without treating them as tables', () => {
+        const group = { id: 'sales', color: '#299a92', x: 410, y: 249, width: 868, height: 530 };
+        const model = calculateErdMinimapModel({ tables, groups: [group], width: 300, height: 180 });
+        expect(model.tableRects).toHaveLength(2);
+        expect(model.groupRects).toEqual([{ id: 'sales', color: '#299a92', x: -24 * model.scale + model.offsetX, y: -16 * model.scale + model.offsetY, width: 868 * model.scale, height: 530 * model.scale }]);
+        expect(model.worldBounds).toMatchObject({ minX: -24, minY: -16, maxX: 844, maxY: 514 });
+        expect(calculateErdMinimapModel({ tables, width: 300, height: 180 })).toEqual(calculateErdMinimapModel({ tables, groups: [], width: 300, height: 180 }));
+    });
     it('projects diagram bounds into a centered, padded minimap', () => {
         const viewport = getErdViewportWorldRect({
             zoom: 2,

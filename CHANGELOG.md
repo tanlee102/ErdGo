@@ -6,18 +6,22 @@ Notable changes to ERD Go are documented here. The format follows [Keep a Change
 
 ### Added
 
-- Prisma-to-ERD workbench with source diagnostics, model/field/relation search, diagram exports, and local documents.
-- Visual ERD Builder with conceptual shapes, semantic checks, undo/redo, selection tools, graph layout, and reviewed SQL transfer to the editor.
-- Spreadsheet-to-SQL conversion for CSV, TSV, text, and XLSX, including type overrides, previews, and issue downloads.
-- Canvas table/column editing, foreign-key creation and reconnection, dialect-aware Add Table validation, and export options.
-- Browser tool guides, homepage tool links and recent local documents, and unit/browser regression test commands.
+- Named SQL canvas table groups with saved membership and group movement.
+- Local sample-data generation with worker preparation, dictionaries, constraint validation, previews, and insertion into a new SQL tab.
+- A locally bundled Monaco runtime and worker, with immediate plain-source editing and retry after loading failures.
+- Regression coverage for first paint, canvas text and sizing, group persistence, sample generation, splitter cleanup, and SQL save lifetimes.
 
 ### Changed
 
-- Updated SQL parsing, schema conversion, Data/Query semantics, renderer geometry, and lazy layout from the current browser implementation.
-- Extended the existing local document store with Prisma and Builder payloads while preserving legacy SQL records and renderer context.
-- Retained Data and Query workbench state across view switches; restored reactive Monaco theme handling.
-- Updated transitive dependencies to resolve the dependency audit findings.
+- Updated renderer first paint, device-pixel-ratio text, visibility culling, minimap, export bounds, panel resizing, and Data View INSERT caching from the read-only reference.
+- Reset each deliberate New SQL navigation and reject save callbacks belonging to unloaded or replaced documents.
+- Focused routes, navigation, source, dependencies, and guides on SQL to ERD with its Data/Query workflows.
+- Preserved the existing local store and renderer context, including older non-SQL records that are hidden from SQL lists.
+- Patched Vite, Vitest, and transitive dependency audit findings.
+
+### Removed
+
+- Prisma, conceptual Builder, and spreadsheet workspaces from this SQL-only open-source application. Class and Sequence workspaces are not included.
 
 ## [0.1.0] - 2026-08-15
 

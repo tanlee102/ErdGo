@@ -1,16 +1,13 @@
 # Architecture
 
-ERD Go is a browser-only React application with SQL, Prisma, conceptual ERD Builder, and spreadsheet workflows. Route pages compose behavior; engines live behind stable facades; browser persistence is treated as a compatibility boundary.
+ERD Go is a browser-only SQL-to-ERD application. Its open-source scope is the SQL editor, canvas, Data View, Query View, local documents, and SQL guide. Other hosted diagram and conversion tools are outside this repository.
 
-## Runtime flow
+## Routes and runtime
 
 ```text
-BrowserRouter -> providers -> / -> HomePage
-                           -> /e/:index -> EditorPage
-                           -> /prisma-to-erd/:index -> PrismaToErdPage
-                           -> /erd-builder/:index -> ErdDraftPage
-                           -> /spreadsheet-to-sql -> SpreadsheetToSqlPage
-                           -> /docs, /docs/:guide -> DocsPage
+BrowserRouter -> ThemeProvider -> / -> HomePage
+                              -> /docs, /docs/:guide -> SQL guide
+                              -> EditorWorkspace -> /e/:index -> EditorPage
 
 SQL tabs -> combined SQL -> sqlToErdSchema -> schemaRef -> ERD renderer
                          -> Data View executor -> Query View executor
@@ -18,35 +15,33 @@ SQL tabs -> combined SQL -> sqlToErdSchema -> schemaRef -> ERD renderer
 Save/open/delete -> localFileStore -> localStorage
 ```
 
-`/` renders the homepage, `/e/new` lazy-loads a fresh local editor, and unknown routes return to the homepage. Saved SQL, Prisma, and Builder routes load only the matching browser document and reject a document from a different tool. They never attempt an authenticated or public network fetch. Workspace providers and overlays live in the nested `EditorWorkspace` route; each tool page loads independently. The homepage does not eagerly load the editor runtime.
+`/e/new` opens a new document. Each deliberate New navigation has its own router entry key, so it resets the starter chooser even when the previous URL was already `/e/new`. Ordinary rerenders preserve unsaved SQL. `/e/:id` reads only the matching local SQL document. Unknown routes return to the homepage. Keep `public/_redirects` so saved links work on static hosts.
 
-The bare `/prisma-to-erd` and `/erd-builder` routes redirect to their `/new` workspace. `/erd-designer` and `/erd-draft` also redirect to `/erd-builder/new`. Keep `public/_redirects` so static hosts serve all workspace routes through the SPA.
+The lazy `EditorWorkspace` owns notifications, confirmations, navigation guards, root editor state, Add Table, and the local file dialog. `EditorPage` composes feature hooks and views. It does not own parser, renderer, sample-data, or persistence engines.
 
 ## Owners and facades
 
 | Concern | Public owner |
 | --- | --- |
-| Routes and providers | `src/App.jsx` |
-| Homepage | `src/pages/HomePage.jsx` |
-| Page composition | `src/pages/EditorPage.jsx` |
-| Editor route boundary and overlays | `src/pages/EditorWorkspace.jsx` |
-| Editor tabs/import/review | `src/features/editor/` |
-| SQL parsing | `src/lib/parse-ast/parseAst.js` |
+| Routes and providers | `src/App.jsx`, `src/pages/EditorWorkspace.jsx` |
+| Homepage and SQL guide | `src/pages/HomePage.jsx`, `src/pages/DocsPage.jsx` |
+| Editor composition | `src/pages/EditorPage.jsx` |
+| SQL tabs/import and revision guards | `src/features/editor/hooks/useSqlTabs.js` |
+| SQL parser | `src/lib/parse-ast/parseAst.js` |
 | SQL-to-ERD conversion | `src/lib/erdJsonSchema.js` |
-| ERD rendering | `src/lib/genErdScript.js` |
+| ERD renderer | `src/lib/genErdScript.js` |
+| Renderer integration and table groups | `useErdRendering.js`, `ErdTableGroupsControl/` |
 | Data View | `src/features/data-view/lib/sqlExecutor.js` |
 | Query View | `src/features/query-view/lib/queryExecutor.js` |
-| Local documents | `src/features/files/lib/localFileStore.js` |
-| Local document kinds/routes | `src/features/files/lib/fileDocuments.js` |
-| Prisma parsing/conversion | `src/features/prisma-erd/lib/prismaToSql.js` |
-| Builder graph/SQL mapping | `src/features/erd-draft/lib/` |
-| Spreadsheet decoding/SQL generation | `src/features/spreadsheet-to-sql/lib/spreadsheetImport.js` |
+| Local sample data | `src/features/data-view/lib/sampleData.js`, `SampleDataDialog/` |
+| Deferred code editor | `src/components/CodeEditor/`, `scripts/code-editor-runtime.js` |
+| Browser documents | `src/features/files/lib/localFileStore.js` |
 
-UI code should import these facades instead of private runtimes such as `erdRendererRuntime.js`, `dataViewRuntime.js`, or `queryRuntime.js`.
+UI must use parser, renderer, Data View, and Query View facades rather than private runtime modules.
 
-## Persistence contract
+## Persistence compatibility
 
-`erdgo:documents:v1` stores an envelope:
+`erdgo:documents:v1` retains its version 1 envelope:
 
 ```json
 {
@@ -64,34 +59,32 @@ UI code should import these facades instead of private runtimes such as `erdRend
 }
 ```
 
-Readers tolerate a missing key, malformed JSON, an older bare-array envelope, invalid records, and missing optional fields. Returned records are cloned so UI code cannot mutate stored state accidentally. Writers preserve `createdAt`, update `updatedAt`, surface storage quota errors, and emit an in-window change event for the local file dialog.
+Readers accept older bare arrays, missing optional fields, malformed JSON, and invalid records. Returned values are cloned. Writers preserve creation timestamps, commit source/name/context together, report quota failures, and notify in-window observers. Storage events, including a cleared key, refresh local lists.
 
-The saved `context` remains backward-compatible data. It includes renderer layout/color/viewport state, SQL-tab metadata, Query View text, display preferences, and relationship-inference decisions. SQL remains the schema-semantic source of truth.
+The previous multi-tool release could store records with `kind: "prisma-erd"` or `kind: "erd-builder"` and a `payload`. `fileDocuments.js` retains those legacy identifiers and metadata for storage compatibility. SQL lists filter them out. SQL loading and saving reject another document kind; saving or deleting a SQL record preserves other stored records. This version does not migrate or delete their payloads.
 
-Missing document kinds mean legacy SQL documents. SQL writers retain the original record shape. Prisma records additionally have `kind: "prisma-erd"` and a `payload` containing `schemaVersion: 1`, Prisma `source`, and `rendererContext`. Builder records have `kind: "erd-builder"` and a `payload` containing `schemaVersion: 3`, persisted `nodes`, `edges`, and `viewport`. These additions retain the version 1 envelope and all existing SQL/context data. Local writes commit name and payload together, preserve timestamps, and refuse to overwrite a record belonging to another tool. No old tool storage is deleted as part of loading.
+Saved renderer context remains backward-compatible. It includes coordinates, colors, viewport, SQL tabs, Query text, display preferences, inference decisions, and optional `tableGroups`. SQL remains the semantic schema source of truth. Missing groups retain the previous ungrouped canvas. Groups change presentation only; they never change SQL or relationships.
 
-`useLocalDocumentState` owns the dirty baseline and exclusive-save guard for the new workspaces. Renderer hydration finishes before a saved diagram becomes the clean baseline. The local file dialog routes each record to its owning tool; Prisma and Builder can filter the list to their document kind. Cross-tab storage changes, including clearing storage, refresh the list.
+Other browser keys remain `erdgo:theme`, `gemini_api_key`, `gemini_api_key_enabled`, `addTable.dialect`, and `addTable.dialect.version`. Sample generation and code-editor fallback add no storage keys.
 
-Other keys:
+## SQL and rendering workflows
 
-- `erdgo:theme` stores `light` or `dark`.
-- `gemini_api_key` and `gemini_api_key_enabled` belong to the optional BYO-key AI editor.
-- `addTable.dialect` and `addTable.dialect.version` store a manual Add Table dialect preference. Current SQL detection remains the default when no manual override is chosen.
+Canvas table/column edits and relationship creation/reconnection pass through the registered SQL-tab operation bridge. Its owning libraries validate current tab revisions and update source SQL and supported dependent statements. Unsafe changes require SQL editing. Destructive changes require review.
 
-## Editing and conversion boundaries
+The renderer paints independently of Monaco readiness. It owns host resize observation, device-pixel-ratio sizing, visibility culling, and canvas text rasterization. Splitter drags coalesce pointer updates and commit the final width on release, blur, or cancellation. A delayed indicator appears only for longer-running rendering. ELK layout and PDF export load on demand.
 
-Canvas schema edits, relationship creation, and reconnection pass through the SQL-tab operation bridge registered by `useSqlTabs`. The owning libraries validate tab revisions and update source SQL, including dependent statements. The renderer does not become a second semantic schema store. Destructive changes require review. Prisma shares diagram appearance controls while hiding SQL-specific mutation buttons.
+Data and Query views mount on first use and remain hidden across switches to retain selection, scrolling, and results. A different document resets their owning state. Their executors run a supported in-memory SQL subset and surface diagnostics for unsupported behavior.
 
-ERD Builder has its own graph/history/semantic libraries. SQL conversion presents diagnostics and mapping choices. Opening its output in `/e/new` uses a validated `sqlEditorTransfer` object in router history state; the editor initializes that document once and skips the starter chooser. Browser reload can restore this unsaved transfer without adding a storage key.
+Data View opens sample generation in a worker. Preparation reads enabled SQL tabs, supported constraints, and current data. Local dictionaries and generators create candidate values; the Data View executor validates generated rows. The dialog supports column choices, preview, cancellation, SQL copying/downloading, and insertion into a new tab. Insertion checks the originating tab/document revision so stale results cannot modify a newer workspace. Generation performs no AI or service request.
 
-Spreadsheet import runs in memory, supports CSV/TSV/text/XLSX, and bounds compressed input and archive expansion. SQL generation defaults to SQLite and offers PostgreSQL, MySQL, and SQL Server. It uses cached formula results rather than evaluating formulas. The tool does not save a workbook; users copy or download SQL and issue reports.
-
-Data and Query views mount on first use and remain hidden across view switches to retain selection, scrolling, and results. Saved document changes still reset their owning state. Shared ELK layout and PDF export libraries load when requested.
+`CodeEditor` exposes a controlled plain-source fallback while editor tools load. Its deferred runtime configures Monaco and a local worker. The Vite plugin emits the production URL/style manifest; development uses a Vite URL import. Keep preload/CommonJS helpers outside the Monaco chunk, and JSX runtime with shared React, so pages and fallback source do not wait for the engine. Retries preserve the document and successfully loaded resources. No Monaco CDN is used.
 
 ## Network boundary
 
-The repository has no account, share, cloud-file, analytics, or application API modules. The only optional service request is an explicit user-initiated Gemini request made with the user’s own key. Monaco's default loader fetches editor code from its public CDN; document content stays in browser memory. Removing the AI UI must not affect parsing, rendering, conversions, Data View, Query View, or local documents.
+There are no account, cloud-file, sharing, analytics, or application API modules. The only optional external service is an explicit Gemini request using the user's own key. Removing AI must not affect SQL parsing, diagrams, sample generation, Data/Query views, exports, or local saves.
 
-## Quality gate
+## Validation
 
-`npm run check` runs ESLint, Vitest regression tests, and a production bundle. `npm run test:e2e` uses Playwright against a local production preview; CI runs both gates. Install Chromium first or use `PLAYWRIGHT_CHANNEL=chrome` for an installed Chrome. Browser checks cover legacy SQL/context loading, canvas edits, Data/Query view switching, Prisma/Builder local saves, SQL handoff, spreadsheet downloads, and mobile/theme behavior. Tests are repository source, while generated reports, `dist/`, and `coverage/` remain ignored.
+`npm run check` runs ESLint, Vitest tests, and the production build. `npm run test:e2e` runs Playwright against a production preview; CI runs both gates. Install Chromium first or use `PLAYWRIGHT_CHANNEL=chrome` for installed Chrome. `PLAYWRIGHT_PORT` selects the preview port.
+
+Tests cover SQL parsing/conversion/execution, geometry and text, group persistence, sample generation and stale insertion, storage compatibility, source fallback/retry, splitter cleanup, and saved-editor/browser workflows. Tests are source; generated `dist/`, `coverage/`, `test-results/`, and `playwright-report/` stay ignored.

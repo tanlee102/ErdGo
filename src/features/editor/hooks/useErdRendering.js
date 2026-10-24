@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useContext, useMemo, useRef } from 'react';
 import { RootLayoutContext } from '@/contexts/RootLayoutContext';
 import { deleteTableFromSql, getTableDeletionInfo } from '@/lib/deleteTableFromSql';
 import runErdScript from '@/lib/genErdScript';
 import { inferRelationships } from '@/lib/relationshipInference';
 import { scoreErdSchema } from '@/lib/schemaQualityScore';
+import { normalizeTableGroups } from '@/lib/erd-renderer/tableGroups';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 
 const RELATIONSHIP_INFERENCE_CONTEXT_KEY = 'relationshipInferenceDecisions';
+const NO_INFERRED_RELATIONS = [];
 
 function buildTableDeletionMessage(tableName, preview) {
     const owner = preview?.owner;
@@ -92,7 +94,7 @@ function isErdRendererDomReady() {
     return !canvas || Boolean(canvas.parentNode);
 }
 
-export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading, isAiPreview = false, contextLoadVersion = 0, schemaVersion = 0 }) {
+export function useErdRendering({ theme, erdContextRef, isLoading, isAiPreview = false, contextLoadVersion = 0, schemaVersion = 0 }) {
     const { sqlInput, setSqlInput, schemaRef, runSqlTabOperation } = useContext(RootLayoutContext);
     const { confirm } = useConfirm();
 
@@ -106,13 +108,23 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
     const [relationshipInferenceDecisions, setRelationshipInferenceDecisions] = useState({ accepted: [], rejected: [] });
     const [schemaQuality, setSchemaQuality] = useState(() => scoreErdSchema(null));
     const [erdContextVersion, setErdContextVersion] = useState(0);
+    const [renderState, setRenderState] = useState({ phase: 'idle', contextLoadVersion });
+    const [tableGroupEditRequest, setTableGroupEditRequest] = useState(null);
+    const [tableGroupsReady, setTableGroupsReady] = useState(false);
+    const [tableGroupsView, setTableGroupsView] = useState({ groups: [], tables: [], selectedTableName: undefined });
     const exportPngRef = useRef(null);
     const setMinimapVisibleRef = useRef(null);
     const renderSeqRef = useRef(0);
-    const autoColorNextRef = useRef(false);
+    const autoColorRequestRef = useRef(null);
     const knownTableNamesRef = useRef(new Set());
     const knownTablesContextVersionRef = useRef(null);
     const jumpToTableCallbackRef = useRef(null);
+    const tableGroupsApiRef = useRef(null);
+    const paintedRenderRef = useRef(null);
+    const tableGroupsAccessRef = useRef({ isLoading, isAiPreview, contextLoadVersion });
+    useLayoutEffect(() => {
+        tableGroupsAccessRef.current = { isLoading, isAiPreview, contextLoadVersion };
+    }, [isLoading, isAiPreview, contextLoadVersion]);
     // Preferences live in the saved file context rather than local storage.
     // Exact booleans preserve old files safely: missing or malformed keys keep
     // their long-standing off/default behavior without rewriting the file.
@@ -124,6 +136,7 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
         setHeaderActionsAlwaysVisibleState(getStoredBooleanDefaultTrue(context, 'headerActionsAlwaysVisible'));
         setRelationshipInferenceOpen(false);
         setShowRelationshipSuggestionConnectors(false);
+        setTableGroupEditRequest(null);
     }, [contextLoadVersion, erdContextRef, isLoading]);
 
     const updateFilePreference = useCallback(
@@ -319,7 +332,12 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
     }, [relationshipCandidates, relationshipInferenceDecisions]);
 
     const inferredRelationsToRender = useMemo(
-        () => relationshipSuggestions.filter((candidate) => candidate.inferenceStatus === 'accepted' || showRelationshipSuggestionConnectors),
+        () => {
+            const visible = relationshipSuggestions.filter((candidate) => candidate.inferenceStatus === 'accepted' || showRelationshipSuggestionConnectors);
+            // Rechecking suggestions must not restart layout when no inferred
+            // connectors are visible, including during the first SQL parse.
+            return visible.length ? visible : NO_INFERRED_RELATIONS;
+        },
         [relationshipSuggestions, showRelationshipSuggestionConnectors],
     );
 
@@ -383,6 +401,27 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
         return true;
     }, [erdContextRef, isAiPreview]);
 
+    const updateTableGroups = useCallback((groups) => {
+        const access = tableGroupsAccessRef.current;
+        const api = tableGroupsApiRef.current;
+        // A toolbar callback may outlive its document or a pending layout. Only
+        // the current painted SQL canvas can write its own group context.
+        if (access.isLoading || access.isAiPreview || access.contextLoadVersion !== contextLoadVersion
+            || api?.contextLoadVersion !== contextLoadVersion || api.runId !== renderSeqRef.current
+            || paintedRenderRef.current !== api.runId) return false;
+        return api.setTableGroups(normalizeTableGroups(groups)) === true;
+    }, [contextLoadVersion]);
+
+    useEffect(() => {
+        setTableGroupsView({
+            groups: normalizeTableGroups(erdContextRef.current?.tableGroups),
+            // SQL quoted identifiers may contain leading/trailing spaces. Use
+            // trimming only to reject empty names, never to change identity.
+            tables: [...new Set((schemaRef.current?.tables || []).map((table) => table.name).filter((name) => typeof name === 'string' && name.trim()))].map((name) => ({ name })),
+            selectedTableName: erdContextRef.current?.selectedNodeName,
+        });
+    }, [erdContextRef, schemaRef, contextLoadVersion, erdContextVersion, schemaVersion, flag]);
+
     // Trigger ERD re-render when SQL changes
     useEffect(() => {
         if (!isLoading) {
@@ -392,7 +431,9 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
 
     // Render ERD when schema changes
     useEffect(() => {
-        if (schemaRef.current && isEditorReady && !isLoading) {
+        // The parsed schema and canvas are independent of Monaco's deferred
+        // download. Start layout as soon as document hydration has completed.
+        if (schemaRef.current && !isLoading) {
             if (!isErdRendererDomReady()) {
                 const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb) => setTimeout(cb, 0);
                 const cancel = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
@@ -401,8 +442,14 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
             }
 
             const runId = (renderSeqRef.current += 1);
-            const shouldAutoColor = autoColorNextRef.current;
-            autoColorNextRef.current = false;
+            const isCurrentRender = () => renderSeqRef.current === runId;
+            tableGroupsApiRef.current = null;
+            paintedRenderRef.current = null;
+            setTableGroupsReady(false);
+            setRenderState({ phase: 'rendering', contextLoadVersion });
+            const autoColorRequest = autoColorRequestRef.current;
+            const shouldAutoColor = autoColorRequest?.contextLoadVersion === contextLoadVersion;
+            if (autoColorRequest && !shouldAutoColor) autoColorRequestRef.current = null;
 
             // A loaded file establishes the baseline and is never rewritten.
             // After that, tables newly introduced through SQL paste, typing,
@@ -433,7 +480,9 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
             // lets the table navigator/jump action target the correct tab line.
             runErdScript(JSON.parse(JSON.stringify(schemaRef.current)), {
                 darkMode: theme === 'dark',
-                fullConnect,
+                // Read hydrated preferences immediately, including the first
+                // run before their matching React control state has committed.
+                fullConnect: getStoredBoolean(initialContext, 'fullConnect'),
                 inferredRelations: inferredRelationsToRender,
                 onTableDelete: handleTableDelete,
                 onJumpToTable: handleJumpToTable,
@@ -444,32 +493,60 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
                 onCanvasSchemaEdit: isAiPreview ? null : handleCanvasSchemaEdit,
                 onRelationshipReconnect: handleRelationshipReconnect,
                 onRelationshipReconnectTargets: handleRelationshipReconnectTargets,
-                onContextChange: onErdContextChange,
+                onContextChange: context => { if (isCurrentRender()) onErdContextChange(context); },
+                isCurrentRender,
+                onFirstPaint: () => {
+                    if (!isCurrentRender()) return;
+                    paintedRenderRef.current = runId;
+                    setRenderState({ phase: 'ready', contextLoadVersion });
+                },
+                tableGroupsEnabled: true,
+                onTableGroupEdit: isAiPreview ? null : (id) => {
+                    const access = tableGroupsAccessRef.current;
+                    if (!isCurrentRender() || access.isLoading || access.isAiPreview || access.contextLoadVersion !== contextLoadVersion) return;
+                    setTableGroupEditRequest((request) => ({ id, version: (request?.version || 0) + 1 }));
+                },
                 tableOwners,
                 // Both visual controls are file preferences. They affect only
                 // canvas display; SQL, parsing, and table ownership stay intact.
-                showTableOwnerLabels,
-                headerActionsAlwaysVisible,
+                showTableOwnerLabels: getStoredBoolean(initialContext, 'showTableOwnerLabels'),
+                headerActionsAlwaysVisible: getStoredBooleanDefaultTrue(initialContext, 'headerActionsAlwaysVisible'),
                 initialContext,
                 autoColor: shouldAutoColor,
             })
                 .then((api) => {
                     if (renderSeqRef.current !== runId) return;
+                    // A cancelled layout never applied its starter colors.
+                    // Consume the document-scoped request only after the
+                    // current renderer has initialized them successfully.
+                    if (api && autoColorRequestRef.current === autoColorRequest) autoColorRequestRef.current = null;
                     exportPngRef.current = api?.exportPng || null;
                     setMinimapVisibleRef.current = api?.setMinimapVisible || null;
+                    tableGroupsApiRef.current = typeof api?.setTableGroups === 'function' ? { runId, contextLoadVersion, setTableGroups: api.setTableGroups } : null;
+                    setTableGroupsReady(Boolean(tableGroupsApiRef.current));
                 })
                 .catch((error) => {
                     if (renderSeqRef.current !== runId) return;
                     console.error('ERD render failed:', error);
+                    setRenderState({ phase: 'error', contextLoadVersion });
                     exportPngRef.current = null;
                     setMinimapVisibleRef.current = null;
+                    tableGroupsApiRef.current = null;
                 });
+            // Pending layouts and notifications belong to this committed run,
+            // including when a route unmounts before its layout has resolved.
+            return () => {
+                if (!isCurrentRender()) return;
+                renderSeqRef.current += 1;
+                tableGroupsApiRef.current = null;
+                paintedRenderRef.current = null;
+            };
         }
-    }, [flag, isEditorReady, theme, fullConnect, handleTableDelete, handleCanvasSchemaEdit, handleJumpToTable, handleRelationshipReconnect, handleRelationshipReconnectTargets, onErdContextChange, schemaRef, isLoading, erdContextRef, isAiPreview, runSqlTabOperation, showTableOwnerLabels, headerActionsAlwaysVisible, inferredRelationsToRender, contextLoadVersion]);
+    }, [flag, theme, fullConnect, handleTableDelete, handleCanvasSchemaEdit, handleJumpToTable, handleRelationshipReconnect, handleRelationshipReconnectTargets, onErdContextChange, schemaRef, isLoading, erdContextRef, isAiPreview, runSqlTabOperation, showTableOwnerLabels, headerActionsAlwaysVisible, inferredRelationsToRender, contextLoadVersion]);
 
     const triggerAutoColor = useCallback(() => {
-        autoColorNextRef.current = true;
-    }, []);
+        autoColorRequestRef.current = { contextLoadVersion };
+    }, [contextLoadVersion]);
 
     const applyNewTableDefaults = useCallback(
         (tableName) => {
@@ -505,7 +582,16 @@ export function useErdRendering({ theme, erdContextRef, isEditorReady, isLoading
             schemaQuality,
         },
         schemaQuality,
+        tableGroups: {
+            ...tableGroupsView,
+            documentKey: contextLoadVersion,
+            editRequest: tableGroupEditRequest,
+            disabled: isLoading || isAiPreview || renderState.contextLoadVersion !== contextLoadVersion || renderState.phase !== 'ready' || !tableGroupsReady,
+            update: updateTableGroups,
+        },
         erdContextVersion,
+        isRendering: isLoading || renderState.contextLoadVersion === contextLoadVersion && renderState.phase === 'rendering',
+        renderError: !isLoading && renderState.contextLoadVersion === contextLoadVersion && renderState.phase === 'error',
         setErdContextVersion,
         handleTableDelete,
         handleJumpToTable,

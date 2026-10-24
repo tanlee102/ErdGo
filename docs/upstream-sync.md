@@ -1,4 +1,22 @@
-# Browser feature update — October 14, 2026
+# Upstream synchronization notes
+
+## October 24, 2026 — SQL-only update
+
+This repository is SQL to ERD only. The update ports the current reference SQL editor and canvas improvements: visual table groups, locally generated sample data, worker-backed local Monaco with editable source fallback and retry, renderer startup/DPR/text/culling changes, minimap/export bounds, panel resizing, and Data View INSERT caching. Parser and schema-conversion code already matched the reference.
+
+SQL loading and saving retain browser-local transport, add retry and per-navigation New lifetimes, and reject stale save callbacks. Previously shipped Prisma, conceptual Builder, and spreadsheet workspaces and their dependencies are removed. Class and Sequence Diagram features are outside scope. Older non-SQL records remain in the local envelope, hidden from SQL lists and protected from SQL overwrites. No account, cloud-file, sharing, analytics, or server AI code is imported.
+
+README, SQL guide, architecture notes, contributor map, changelog, and regression/browser suites describe this SQL-only scope. The earlier multi-tool notes below are historical.
+
+### Validation
+
+- `npm run check`: lint, all 6,280 tests across 131 suites, and production build passed.
+- Seven production-preview Chrome workflows passed: homepage/mobile/theme, group persistence without SQL changes, local sample generation/insertion, local editor fallback/retry, hidden legacy-record preservation, repeated New navigation, and saved SQL/canvas/Data/Query/PNG export.
+- `npm audit --audit-level=low`: zero vulnerabilities. Dependency tree and lockfile dry-run checks passed.
+- The local Monaco engine is deferred in one retryable chunk (about 3.3 MB minified), which produces Vite's large-chunk advisory. The source editor and canvas work while it downloads.
+- All 943 reference files matched the pre-update fingerprint, and its Git status remained clean.
+
+## October 14, 2026 — Historical browser feature update
 
 This update uses the current `erd-go-v2` browser code as a read-only reference. All implementation and validation changes belong to `open-erdgo`.
 

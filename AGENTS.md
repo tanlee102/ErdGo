@@ -2,6 +2,7 @@
 
 ## Non-negotiable boundaries
 
+- Keep this repository focused on SQL to ERD and its Data/Query workflows; do not port other diagram or conversion tools.
 - Keep the app local-first: no account, cloud-file, sharing, or analytics APIs.
 - Treat `erdgo:documents:v1` and saved renderer context as backward-compatible data.
 - Keep `src/pages/EditorPage.jsx` as a composer; behavior belongs to its owning feature or library.
@@ -24,9 +25,9 @@
 | Rendering/layout | `src/lib/genErdScript.js`, then `src/lib/erd-renderer/` |
 | Data View | `src/features/data-view/lib/sqlExecutor.js` |
 | Query View | `src/features/query-view/lib/queryExecutor.js` |
-| Prisma conversion/explorer | `src/features/prisma-erd/` |
-| Conceptual ERD Builder/SQL export | `src/features/erd-draft/` |
-| Spreadsheet-to-SQL | `src/features/spreadsheet-to-sql/` |
-| Typed local documents/routes | `src/features/files/lib/localFileStore.js`, `fileDocuments.js` |
+| SQL table groups | `ErdTableGroupsControl/`, `useErdRendering.js`, renderer group helpers |
+| Local sample data | `src/features/data-view/lib/sampleData.js`, `SampleDataDialog/` |
+| Local code editor/runtime | `src/components/CodeEditor/`, `scripts/code-editor-runtime.js` |
+| Legacy document compatibility | `src/features/files/lib/localFileStore.js`, `fileDocuments.js` |
 
 When a symptom crosses layers, prove the first incorrect boundary value and fix the owning layer rather than compensating downstream.

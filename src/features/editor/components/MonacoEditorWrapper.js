@@ -5,7 +5,7 @@ import { monacoOptions } from '@/config/monacoOptions';
 import { languageConfiguration } from '@/config/languageConfiguration';
 import { findCreateTableMatchInSql } from '../lib/sqlTabs';
 import { renderDiffBlocks } from '../lib/renderDiffBlocks';
-import MonacoEditor from '@monaco-editor/react';
+import MonacoEditor from '@/components/CodeEditor';
 
 // 📐 SQL Format config - synced with monacoOptions
 const sqlFormatConfig = {
@@ -139,6 +139,7 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
     const currentCodeRef = useRef('');
     const modelPathRef = useRef(null);
     const modelChangeListenerRef = useRef(null);
+    const formattingProviderRef = useRef(null);
     const mountModelSyncCleanupRef = useRef(null);
     const previewViewStatesRef = useRef(new Map());
     const wasReviewingRef = useRef(showAiSuggestions);
@@ -204,7 +205,10 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
         monaco.languages.setLanguageConfiguration('sql', languageConfiguration);
 
         // 🎨 Register Format Document provider for SQL
-        monaco.languages.registerDocumentFormattingEditProvider('sql', {
+        // Hydrating another file recreates the widget, not this wrapper.
+        // Keep one formatter instead of accumulating providers on every New.
+        formattingProviderRef.current?.dispose?.();
+        formattingProviderRef.current = monaco.languages.registerDocumentFormattingEditProvider('sql', {
             provideDocumentFormattingEdits: (model) => {
                 const text = model.getValue();
                 if (!text?.trim()) return [];
@@ -318,6 +322,8 @@ export default function MonacoEditorWrapper({ sqlInput, setSqlInput, editorPath 
             modelChangeListenerRef.current = null;
             mountModelSyncCleanupRef.current?.();
             mountModelSyncCleanupRef.current = null;
+            formattingProviderRef.current?.dispose?.();
+            formattingProviderRef.current = null;
         };
     }, []);
 
